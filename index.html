@@ -212,6 +212,15 @@ function App(){
   var _cpc=us(0),cpC=_cpc[0],sCpC=_cpc[1]; // create project color index
   var _cpno=us(''),cpNo=_cpno[0],sCpNo=_cpno[1]; // create project notes
   var _epj=us(null),edPj=_epj[0],sEdPj=_epj[1]; // editing project id (inline edit)
+
+  /* --- Phase 3: Setlists --- */
+  var _sls=us([]),setlists=_sls[0],sSls=_sls[1]; // all setlists
+  var _esl=us(null),edSl=_esl[0],sEdSl=_esl[1]; // editing setlist (full obj or null)
+  var _rsl=us(null),runSl=_rsl[0],sRunSl=_rsl[1]; // running setlist obj
+  var _rsi=us(0),runSi=_rsi[0],sRunSi=_rsi[1]; // running step index
+  var _rss=us('idle'),runSt=_rss[0],sRunSt=_rss[1]; // 'idle'|'playing'|'rest'|'done'
+  var _rse=us([]),runSes=_rse[0],sRunSes=_rse[1]; // per-step session results
+  var slTm=ur(null); // setlist rest timer ref
   function onSwTS(e){var t=e.touches[0];swRef.current={sx:t.clientX,sy:t.clientY,st:Date.now()}}
   function onSwTE(e){var t=e.changedTouches[0],r=swRef.current,dx=t.clientX-r.sx,dy=t.clientY-r.sy,dt=Date.now()-r.st;
     if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.3&&dt<500){
@@ -229,6 +238,48 @@ function App(){
   function pjAccuracy(pj){var ss=pjSessions(pj);if(!ss.length)return null;var sum=0;ss.forEach(function(s){sum+=s.goodPct||0});return Math.round(sum/ss.length)}
   var actPjObj=projs.find(function(p){return p.id===actPj})||null;
 
+  /* Setlist CRUD */
+  function mkSl(projId){var sl={id:'sl'+Date.now().toString(36),name:'New Setlist',projectId:projId,steps:[],loop:false,restBetween:0,created:new Date().toISOString()};sSls(function(p){return p.concat([sl])});sEdSl(sl);return sl}
+  function updSl(id,upd){sSls(function(p){return p.map(function(s){if(s.id!==id)return s;return Object.assign({},s,upd)})});if(edSl&&edSl.id===id)sEdSl(function(p){return Object.assign({},p,upd)})}
+  function delSl(id){sSls(function(p){return p.filter(function(s){return s.id!==id})});if(edSl&&edSl.id===id)sEdSl(null)}
+  function slAddStep(slId,presetId){var pr=sP.find(function(p){return p.id===presetId});if(!pr)return;var st={id:'st'+Date.now().toString(36),presetId:presetId,presetName:pr.name,duration:0,countIn:1,autoRecord:true,bpm:pr.bpm,tsNum:pr.tsNum,tsDen:pr.tsDen};updSl(slId,{steps:(edSl?edSl.steps:[]).concat([st])})}
+  function slRemStep(slId,stIdx){var sl=edSl||setlists.find(function(s){return s.id===slId});if(!sl)return;var ns=sl.steps.slice();ns.splice(stIdx,1);updSl(slId,{steps:ns})}
+  function slMoveStep(slId,from,to){var sl=edSl||setlists.find(function(s){return s.id===slId});if(!sl||to<0||to>=sl.steps.length)return;var ns=sl.steps.slice(),it=ns.splice(from,1)[0];ns.splice(to,0,it);updSl(slId,{steps:ns})}
+  function slUpdStep(slId,stIdx,upd){var sl=edSl||setlists.find(function(s){return s.id===slId});if(!sl)return;var ns=sl.steps.slice();ns[stIdx]=Object.assign({},ns[stIdx],upd);updSl(slId,{steps:ns})}
+  function pjSetlists(pj){if(!pj)return[];return setlists.filter(function(s){return s.projectId===pj.id})}
+
+  /* Setlist Runner */
+  function slLoadStep(sl,idx){var st=sl.steps[idx];if(!st)return;var pr=sP.find(function(p){return p.id===st.presetId});if(pr)ldP(pr);else{sB(st.bpm||120);if(st.tsNum){sTN(st.tsNum);sTD(st.tsDen||4);sTG(dGrp(st.tsNum,st.tsDen||4))}}}
+  function slStart(sl){if(!sl||!sl.steps.length)return;sRunSl(sl);sRunSi(0);sRunSes([]);sRunSt('playing');slLoadStep(sl,0);setScr(1);
+    setTimeout(function(){if(!pl){iAC();ac.current.resume().then(function(){var ct=ac.current.currentTime;cf.current.tracks.forEach(function(t){nn.current[t.id]=ct+.1;cb2.current[t.id]=0});vq.current=[];mc.current=0;ms.current=ct+.1;sb.current=[];lt2.current=-1;
+      var st=sl.steps[0];if(st.countIn>0){ci2.current=true;cr.current=st.countIn}else ci2.current=false;sPl(true);sch();if(st.autoRecord)stR()})}},100)}
+  function slNext(){if(!runSl)return;
+    /* Save current step session if recording */
+    if(isRRef.current){isRRef.current=false;sR(false);var mrRef=mr.current;mr.current=null;if(mrRef&&mrRef.state!=='inactive')try{mrRef.stop()}catch(e){}
+      if(mg.current&&mx.current)try{mg.current.disconnect(mx.current)}catch(e){try{mg.current.disconnect();if(co.current)mg.current.connect(co.current)}catch(e2){}}
+      if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;
+      var on=ol.current.slice(),fi=aPf?on.filter(function(o){return o.instrument}):on;
+      if(fi.length>0){var ds=fi.map(function(o){return o.delta}),av=ds.reduce(function(a,b){return a+b},0)/ds.length,gd=ds.filter(function(d){return Math.abs(d)<=25}).length;
+        var sr={step:runSi,name:runSl.steps[runSi].presetName||'Step '+(runSi+1),bpm:cf.current.bpm,hits:fi.length,goodPct:Math.round(gd/Math.max(fi.length,1)*100)};
+        sRunSes(function(p){return p.concat([sr])})}}
+    /* Stop playback */
+    clearTimeout(tm.current);sPl(false);sAB({});
+    var ni=runSi+1;
+    if(ni>=runSl.steps.length){if(runSl.loop){ni=0}else{sRunSt('done');return}}
+    sRunSi(ni);
+    /* Rest gap */
+    var rest=runSl.restBetween||0;
+    if(rest>0){sRunSt('rest');slTm.current=setTimeout(function(){slPlayStep(ni)},rest*1000)}
+    else slPlayStep(ni)}
+  function slPlayStep(idx){if(!runSl)return;sRunSt('playing');slLoadStep(runSl,idx);
+    setTimeout(function(){iAC();ac.current.resume().then(function(){var ct=ac.current.currentTime;cf.current.tracks.forEach(function(t){nn.current[t.id]=ct+.1;cb2.current[t.id]=0});vq.current=[];mc.current=0;ms.current=ct+.1;sb.current=[];lt2.current=-1;ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;
+      var st=runSl.steps[idx];if(st.countIn>0){ci2.current=true;cr.current=st.countIn}else ci2.current=false;sPl(true);sch();if(st.autoRecord)stR()})},200)}
+  function slStop(){clearTimeout(slTm.current);if(isRRef.current)spR();else if(pl){clearTimeout(tm.current);sPl(false);sAB({})}sRunSl(null);sRunSi(0);sRunSt('idle');sRunSes([])}
+
+  /* Auto-advance timer for timed steps */
+  ue(function(){if(runSt!=='playing'||!runSl)return;var st=runSl.steps[runSi];if(!st||!st.duration||st.duration<=0)return;
+    var t=setTimeout(function(){slNext()},st.duration*1000);return function(){clearTimeout(t)}},[runSt,runSi,runSl]);
+
   var meter=um(function(){var n=tsN+'/'+tsD;if(tsD===8&&tsG.length>1)n=tsN+'/'+tsD+' ('+tsG.join('+')+')';return{n:n,num:tsN,den:tsD,grp:tsG}},[tsN,tsD,tsG]);
   var gs=gS(meter,sub),cE=trks[eT]||trks[0];
 
@@ -243,11 +294,13 @@ function App(){
     sPf(LS.g('pp10prof')||[]);
     /* Load projects */
     sProjs(LS.g('pp2_projects')||[]);sActPj(LS.g('pp2_actpj')||null);
+    sSls(LS.g('pp2_setlists')||[]);
     sLd(true)},[]);
   ue(function(){if(ld)LS.s('pp10',{bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks,sens:sns,latOff:lO,polyOn:poO})},[bpm,tsN,tsD,tsG,sub,vol,trks,sns,lO,poO,ld]);
   ue(function(){if(ld)LS.s('pp10p',sP)},[sP,ld]);ue(function(){if(ld)LS.s('pp10s',ses.slice(-50))},[ses,ld]);ue(function(){if(ld)LS.s('pp10prof',prfs)},[prfs,ld]);
   ue(function(){if(ld)LS.s('pp2_projects',projs)},[projs,ld]);
   ue(function(){if(ld)LS.s('pp2_actpj',actPj)},[actPj,ld]);
+  ue(function(){if(ld)LS.s('pp2_setlists',setlists)},[setlists,ld]);
 
   function chM(n,d,g){sTN(n);sTD(d);sTG(g);var m2={n:n+'/'+d,num:n,den:d,grp:g},gs2=gS(m2,sub),ac2=dAcc(m2,sub);
     sTr(function(tr){return tr.map(function(t,i){if(i>0)return t;return Object.assign({},t,{beats:gs2,accents:ac2})})});if(pl)tgPl()}
@@ -367,7 +420,7 @@ function App(){
   function tgR(){if(isR)tgPl();else{if(!pl){iAC();ac.current.resume().then(function(){try{if('wakeLock' in navigator)navigator.wakeLock.request('screen').then(function(w){wl.current=w}).catch(function(){})}catch(e){}
       var ct=ac.current.currentTime;cf.current.tracks.forEach(function(t){nn.current[t.id]=ct+.1;cb2.current[t.id]=0});vq.current=[];mc.current=0;ms.current=ct+.1;sb.current=[];lt2.current=-1;
       if(ciB>0){ci2.current=true;cr.current=ciB}else ci2.current=false;sPl(true);sch();stR()})}else stR()}}
-  ue(function(){return function(){clearTimeout(tm.current);cancelAnimationFrame(af.current);if(ac.current)ac.current.close();if(wl.current)wl.current.release()}},[]);
+  ue(function(){return function(){clearTimeout(tm.current);clearTimeout(slTm.current);cancelAnimationFrame(af.current);if(ac.current)ac.current.close();if(wl.current)wl.current.release()}},[]);
 
   /* CALIBRATION */
   function stC(){iAC();if(ac.current.state==='suspended')ac.current.resume();navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(stream){
@@ -459,6 +512,46 @@ function App(){
                     h('span',{style:{fontSize:14,fontWeight:800,color:s.goodPct>=70?'rgba(200,255,200,0.7)':s.goodPct>=40?'rgba(255,255,200,0.7)':'rgba(255,200,200,0.7)'}},s.goodPct+'%'),
                     h('span',{style:{fontSize:9,color:'#333'}},s.totalHits+' hits')),
                   h('div',{style:{fontSize:9,color:'#333',marginTop:2}},s.bpm+' BPM \u00B7 '+new Date(s.date).toLocaleDateString()))}):h('div',{style:{textAlign:'center',padding:16,color:'#222',fontSize:10}},'No sessions yet')),
+              /* Setlists */
+              h('div',{style:CD},
+                h('div',{style:Object.assign({},LB,{display:'flex',justifyContent:'space-between',alignItems:'center'})},h('span',null,'SETLISTS'),
+                  h('button',{onClick:function(){mkSl(dp.id)},style:{fontSize:8,color:'#444',background:'none',border:'none',letterSpacing:1}},'\u002B NEW')),
+                edSl&&edSl.projectId===dp.id?
+                /* Setlist Editor */
+                h('div',null,
+                  h('div',{style:{display:'flex',gap:8,marginBottom:10}},
+                    h('input',{type:'text',value:edSl.name,onChange:function(e){updSl(edSl.id,{name:e.target.value})},style:{flex:1,background:'#0a0a0a',border:'1px solid #1a1a1a',borderRadius:8,padding:'8px 10px',fontSize:12,color:'#ccc',outline:'none',fontFamily:'inherit'}}),
+                    h('button',{onClick:function(){sEdSl(null)},style:{padding:'8px 12px',borderRadius:8,background:'#141414',border:'1px solid #1a1a1a',color:'#888',fontSize:9,fontWeight:700}},'\u2713 DONE')),
+                  h('div',{style:{display:'flex',gap:8,marginBottom:10}},
+                    h('div',{style:{flex:1}},h('div',{style:{fontSize:8,color:'#333',marginBottom:4}},'REST (sec)'),h('input',{type:'number',value:edSl.restBetween||0,onChange:function(e){updSl(edSl.id,{restBetween:Math.max(0,Number(e.target.value))})},style:{width:'100%',background:'#0a0a0a',border:'1px solid #1a1a1a',borderRadius:8,padding:'6px 8px',fontSize:11,color:'#888',outline:'none',textAlign:'center',fontFamily:'inherit'}})),
+                    h('div',null,h('div',{style:{fontSize:8,color:'#333',marginBottom:4}},'LOOP'),h('button',{onClick:function(){updSl(edSl.id,{loop:!edSl.loop})},style:TG(edSl.loop)},h('div',{style:TK(edSl.loop)})))),
+                  /* Steps */
+                  edSl.steps.length>0?edSl.steps.map(function(st,i){return h('div',{key:st.id,style:{display:'flex',gap:6,alignItems:'center',padding:'8px 10px',marginBottom:4,borderRadius:10,background:'#0e0e0e',border:'1px solid #1a1a1a'}},
+                    h('span',{style:{fontSize:10,fontWeight:800,color:'#333',width:18,textAlign:'center'}},i+1),
+                    h('div',{style:{flex:1}},
+                      h('div',{style:{fontSize:11,fontWeight:600,color:'#888'}},st.presetName||'Step '+(i+1)),
+                      h('div',{style:{display:'flex',gap:8,marginTop:4}},
+                        h('div',null,h('span',{style:{fontSize:7,color:'#333'}},'DUR '),h('input',{type:'number',value:st.duration||0,onChange:function(e){slUpdStep(edSl.id,i,{duration:Math.max(0,Number(e.target.value))})},style:{width:40,background:'#0a0a0a',border:'1px solid #1a1a1a',borderRadius:4,padding:'2px 4px',fontSize:10,color:'#888',outline:'none',textAlign:'center',fontFamily:'inherit'}}),h('span',{style:{fontSize:7,color:'#333'}},'s')),
+                        h('div',null,h('span',{style:{fontSize:7,color:'#333'}},'CI '),h('input',{type:'number',value:st.countIn,onChange:function(e){slUpdStep(edSl.id,i,{countIn:Math.max(0,Number(e.target.value))})},style:{width:30,background:'#0a0a0a',border:'1px solid #1a1a1a',borderRadius:4,padding:'2px 4px',fontSize:10,color:'#888',outline:'none',textAlign:'center',fontFamily:'inherit'}})),
+                        h('button',{onClick:function(){slUpdStep(edSl.id,i,{autoRecord:!st.autoRecord})},style:{fontSize:8,color:st.autoRecord?'#ff6666':'#333',background:'none',border:'none'}},st.autoRecord?'\u25CF REC':'\u25CB REC'))),
+                    h('div',{style:{display:'flex',flexDirection:'column',gap:2}},
+                      i>0&&h('button',{onClick:function(){slMoveStep(edSl.id,i,i-1)},style:{width:22,height:16,borderRadius:4,background:'#141414',border:'none',color:'#555',fontSize:8}},'\u25B2'),
+                      i<edSl.steps.length-1&&h('button',{onClick:function(){slMoveStep(edSl.id,i,i+1)},style:{width:22,height:16,borderRadius:4,background:'#141414',border:'none',color:'#555',fontSize:8}},'\u25BC')),
+                    h('button',{onClick:function(){slRemStep(edSl.id,i)},style:{width:24,height:24,borderRadius:6,background:'none',border:'none',color:'#ff6666',fontSize:14}},'\u00D7'))}):
+                  h('div',{style:{textAlign:'center',padding:12,color:'#222',fontSize:10}},'No steps yet'),
+                  /* Add step from project presets */
+                  pPre.length>0&&h('div',{style:{marginTop:8}},h('div',{style:{fontSize:8,color:'#333',marginBottom:4}},'ADD STEP:'),h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
+                    pPre.map(function(p){return h('button',{key:p.id,onClick:function(){slAddStep(edSl.id,p.id)},style:{padding:'4px 10px',borderRadius:6,background:'#141414',border:'1px solid #1a1a1a',color:'#666',fontSize:9}},p.name)}))),
+                  edSl.steps.length>=2&&h('button',{onClick:function(){sEdSl(null);slStart(edSl)},style:{width:'100%',marginTop:12,padding:'12px',borderRadius:12,background:'rgba(200,255,200,0.06)',border:'1.5px solid rgba(200,255,200,0.15)',color:'rgba(200,255,200,0.7)',fontSize:11,fontWeight:700,letterSpacing:1}},'\u25B6 RUN SETLIST'))
+                :
+                /* Setlist cards list */
+                (function(){var pSls=pjSetlists(dp);return pSls.length>0?pSls.map(function(sl){return h('div',{key:sl.id,style:{display:'flex',gap:8,marginBottom:6}},
+                  h('button',{onClick:function(){sEdSl(sl)},style:{flex:1,padding:10,borderRadius:10,border:'1px solid #1a1a1a',background:'#0e0e0e',textAlign:'left'}},
+                    h('div',{style:{fontSize:11,fontWeight:700,color:'#888'}},sl.name),
+                    h('div',{style:{fontSize:9,color:'#333',marginTop:2}},sl.steps.length+' step'+(sl.steps.length!==1?'s':'')+(sl.loop?' \u00B7 loop':''))),
+                  sl.steps.length>=2&&h('button',{onClick:function(){slStart(sl)},style:{padding:'0 14px',borderRadius:10,background:'rgba(200,255,200,0.04)',border:'1px solid rgba(200,255,200,0.1)',color:'rgba(200,255,200,0.6)',fontSize:14}},'\u25B6'),
+                  h('button',{onClick:function(){delSl(sl.id)},style:{padding:'0 10px',background:'#0e0e0e',border:'1px solid #1a1a1a',borderRadius:10,color:'#ff6666',fontSize:12}},'\u00D7'))}):
+                h('div',{style:{textAlign:'center',padding:12,color:'#222',fontSize:10}},'Create a setlist to chain presets')})()),
               /* Danger zone */
               h('div',{style:{marginTop:12,textAlign:'center'}},
                 h('button',{onClick:function(){if(confirm('Delete project "'+dp.name+'"? Presets and sessions will be unlinked but not deleted.'))delPj(dp.id)},style:{fontSize:9,color:'#ff6666',background:'none',border:'none',opacity:.5}},'Delete Project')))}):
@@ -529,6 +622,35 @@ function App(){
             h('div',{style:{display:'flex',gap:8}},
               h('button',{onClick:fiC,disabled:cH.length<3,style:{flex:1,padding:'10px',borderRadius:10,background:cH.length>=3?'rgba(200,255,200,0.08)':'#141414',border:'1px solid '+(cH.length>=3?'rgba(200,255,200,0.2)':'#1a1a1a'),color:cH.length>=3?'rgba(200,255,200,0.7)':'#333',fontSize:10,fontWeight:700}},'\u2713 SAVE'),
               h('button',{onClick:caC,style:{padding:'10px 16px',borderRadius:10,background:'#141414',border:'1px solid #1a1a1a',color:'#555',fontSize:10,fontWeight:700}},'\u2715')))),
+
+        /* Setlist runner bar */
+        runSl&&runSt!=='idle'&&runSt!=='done'&&h('div',{style:{flexShrink:0,padding:'0 12px 6px'}},
+          h('div',{style:{background:'#111',borderRadius:12,padding:'10px 14px',border:'1px solid rgba(200,255,200,0.08)'}},
+            h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}},
+              h('div',{style:{fontSize:9,fontWeight:700,color:'rgba(200,255,200,0.5)',letterSpacing:1}},'SETLIST \u00B7 '+runSl.name),
+              h('button',{onClick:slStop,style:{fontSize:8,color:'#ff6666',background:'none',border:'none',letterSpacing:1}},'\u2715 STOP')),
+            h('div',{style:{display:'flex',alignItems:'center',gap:10}},
+              h('div',{style:{fontSize:16,fontWeight:800,color:'#ccc'}},(runSi+1)+'/'+runSl.steps.length),
+              h('div',{style:{flex:1}},
+                h('div',{style:{fontSize:11,fontWeight:700,color:'#888'}},runSl.steps[runSi]?runSl.steps[runSi].presetName||'Step '+(runSi+1):''),
+                runSt==='rest'&&h('div',{style:{fontSize:9,color:'#fcc419',marginTop:2}},'Rest...')),
+              runSl.steps[runSi]&&(!runSl.steps[runSi].duration||runSl.steps[runSi].duration<=0)&&h('button',{onClick:slNext,style:{padding:'8px 16px',borderRadius:10,background:'rgba(200,255,200,0.06)',border:'1px solid rgba(200,255,200,0.12)',color:'rgba(200,255,200,0.7)',fontSize:10,fontWeight:700}},runSi<runSl.steps.length-1?'NEXT \u25B6':'FINISH')),
+            /* Step dots */
+            h('div',{style:{display:'flex',gap:3,marginTop:6}},runSl.steps.map(function(_,i){return h('div',{key:i,style:{flex:1,height:3,borderRadius:2,background:i<runSi?'rgba(200,255,200,0.3)':i===runSi?'rgba(200,255,200,0.6)':'rgba(255,255,255,0.06)'}})})))),
+
+        /* Setlist completion overlay */
+        runSt==='done'&&runSl&&h('div',{style:{flexShrink:0,padding:'0 12px 6px'}},
+          h('div',{style:{background:'#111',borderRadius:14,padding:16,border:'1px solid rgba(200,255,200,0.1)'}},
+            h('div',{style:{textAlign:'center',marginBottom:12}},
+              h('div',{style:{fontSize:11,fontWeight:700,color:'rgba(200,255,200,0.5)',letterSpacing:2,marginBottom:4}},'\u2713 SETLIST COMPLETE'),
+              h('div',{style:{fontSize:16,fontWeight:800,color:'#ccc'}},runSl.name)),
+            runSes.length>0&&h('div',null,runSes.map(function(sr,i){return h('div',{key:i,style:{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',marginBottom:3,borderRadius:8,background:'#0e0e0e'}},
+              h('div',null,h('span',{style:{fontSize:10,fontWeight:800,color:'#555',marginRight:6}},i+1),h('span',{style:{fontSize:11,fontWeight:600,color:'#888'}},sr.name)),
+              h('div',{style:{display:'flex',gap:8,alignItems:'center'}},
+                h('span',{style:{fontSize:9,color:'#444'}},sr.bpm+' BPM'),
+                h('span',{style:{fontSize:9,color:'#444'}},sr.hits+' hits'),
+                h('span',{style:{fontSize:14,fontWeight:800,color:sr.goodPct>=70?'rgba(200,255,200,0.7)':sr.goodPct>=40?'rgba(255,255,200,0.7)':'rgba(255,200,200,0.7)'}},sr.goodPct+'%')))})),
+            h('button',{onClick:function(){sRunSt('idle');sRunSl(null);sRunSes([])},style:{width:'100%',marginTop:10,padding:'10px',borderRadius:10,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',color:'#888',fontSize:10,fontWeight:700}},'\u2713 DISMISS'))),
 
         /* Sequencer strip */
         h('div',{className:'seq-strip',style:{paddingBottom:8}},
