@@ -221,6 +221,29 @@ function App(){
   var _rss=us('idle'),runSt=_rss[0],sRunSt=_rss[1]; // 'idle'|'playing'|'rest'|'done'
   var _rse=us([]),runSes=_rse[0],sRunSes=_rse[1]; // per-step session results
   var slTm=ur(null); // setlist rest timer ref
+
+  /* --- Phase 5: Polish --- */
+  var _ttaps=us([]),tTaps=_ttaps[0],sTTaps=_ttaps[1]; // tap tempo timestamps
+  var _obd=us(false),obD=_obd[0],sObD=_obd[1]; // onboarding dismissed
+  var ttRef=ur(null); // tap tempo reset timer
+
+  function tapTempo(){var now=Date.now();var taps=tTaps.concat([now]).filter(function(t){return now-t<3000}).slice(-8);
+    sTTaps(taps);clearTimeout(ttRef.current);ttRef.current=setTimeout(function(){sTTaps([])},3000);
+    if(taps.length>=3){var diffs=[];for(var i=1;i<taps.length;i++)diffs.push(taps[i]-taps[i-1]);
+      var avg=diffs.reduce(function(a,b){return a+b},0)/diffs.length;var newBpm=Math.round(60000/avg);
+      newBpm=Math.max(20,Math.min(300,newBpm));sB(newBpm)}}
+
+  function getStreak(sessions){if(!sessions.length)return 0;var days={};sessions.forEach(function(s){var d=new Date(s.date).toDateString();days[d]=true});
+    var streak=0,d=new Date();for(var i=0;i<365;i++){if(days[d.toDateString()])streak++;else if(i>0)break;d.setDate(d.getDate()-1)}return streak}
+  var streak=um(function(){return getStreak(ses)},[ses]);
+
+  function exportData(){var data={version:2,exported:new Date().toISOString(),settings:LS.g('pp10'),presets:sP,sessions:ses,profiles:prfs,projects:projs,setlists:setlists,activeProject:actPj};
+    var bl=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='polyrhythm-pro-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(u)}
+  function importData(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){try{var data=JSON.parse(ev.target.result);
+    if(data.settings){var d=data.settings;if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff)}
+    if(data.presets)sSP(data.presets);if(data.sessions)sSs(data.sessions);if(data.profiles)sPf(data.profiles);
+    if(data.projects)sProjs(data.projects);if(data.setlists)sSls(data.setlists);if(data.activeProject)sActPj(data.activeProject);
+    alert('Imported '+((data.sessions||[]).length)+' sessions, '+((data.presets||[]).length)+' presets, '+((data.projects||[]).length)+' projects')}catch(err){alert('Invalid backup file')}};r.readAsText(f)}
   function onSwTS(e){var t=e.touches[0];swRef.current={sx:t.clientX,sy:t.clientY,st:Date.now()}}
   function onSwTE(e){var t=e.changedTouches[0],r=swRef.current,dx=t.clientX-r.sx,dy=t.clientY-r.sy,dt=Date.now()-r.st;
     if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.3&&dt<500){
@@ -294,13 +317,15 @@ function App(){
     sPf(LS.g('pp10prof')||[]);
     /* Load projects */
     sProjs(LS.g('pp2_projects')||[]);sActPj(LS.g('pp2_actpj')||null);
-    sSls(LS.g('pp2_setlists')||[]);
+    sSls(LS.g('pp2_setlists')||[]);sObD(LS.g('pp2_onboard')||false);
     sLd(true)},[]);
   ue(function(){if(ld)LS.s('pp10',{bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks,sens:sns,latOff:lO,polyOn:poO})},[bpm,tsN,tsD,tsG,sub,vol,trks,sns,lO,poO,ld]);
   ue(function(){if(ld)LS.s('pp10p',sP)},[sP,ld]);ue(function(){if(ld)LS.s('pp10s',ses.slice(-50))},[ses,ld]);ue(function(){if(ld)LS.s('pp10prof',prfs)},[prfs,ld]);
   ue(function(){if(ld)LS.s('pp2_projects',projs)},[projs,ld]);
   ue(function(){if(ld)LS.s('pp2_actpj',actPj)},[actPj,ld]);
   ue(function(){if(ld)LS.s('pp2_setlists',setlists)},[setlists,ld]);
+  ue(function(){if(ld&&obD)LS.s('pp2_onboard',true)},[obD,ld]);
+  ue(function(){return function(){clearTimeout(ttRef.current)}},[]);
 
   function chM(n,d,g){sTN(n);sTD(d);sTG(g);var m2={n:n+'/'+d,num:n,den:d,grp:g},gs2=gS(m2,sub),ac2=dAcc(m2,sub);
     sTr(function(tr){return tr.map(function(t,i){if(i>0)return t;return Object.assign({},t,{beats:gs2,accents:ac2})})});if(pl)tgPl()}
@@ -310,7 +335,7 @@ function App(){
 
   var nxN=uc(function(tid){var c=cf.current,t=c.tracks.find(function(t){return t.id===tid});if(!t)return;var md=mDur(c.meter,c.bpm),d=md/t.beats;if(t.swing>0)d=cb2.current[tid]%2===0?md/t.beats*(1+t.swing*.5):md/t.beats*(1-t.swing*.5);nn.current[tid]+=d;var nb=(cb2.current[tid]+1)%t.beats;cb2.current[tid]=nb;if(tid===c.tracks[0].id&&nb===0){mc.current++;ms.current=nn.current[tid]}},[]);
   var scN=uc(function(tid,bn,time){var c=cf.current,t=c.tracks.find(function(t){return t.id===tid});if(!t)return;if(ci2.current&&tid!==c.tracks[0].id)return;var al=t.accents[bn];
-    if(al>0&&!t.muted&&ac.current&&mg.current){var ia=al>=2,sid=rSid(ia?t.accentSound:t.normalSound),v=ia?t.accentVolume*Math.min(al/2,1):t.normalVolume*(al===0?.2:al>=1?1:.6);if(SE[sid])SE[sid](ac.current,time,ia,v,mg.current);if(bn===0&&navigator.vibrate)navigator.vibrate(ia?30:15)}
+    if(al>0&&!t.muted&&ac.current&&mg.current){var ia=al>=2,sid=rSid(ia?t.accentSound:t.normalSound),v=ia?t.accentVolume*Math.min(al/2,1):t.normalVolume*(al===0?.2:al>=1?1:.6);if(SE[sid])SE[sid](ac.current,time,ia,v,mg.current);if(tid===c.tracks[0].id&&navigator.vibrate)navigator.vibrate(al>=3?50:al>=2?30:bn===0?20:10)}
     if(al>0){sb.current.push({tid:tid,beat:bn,time:time,acc:al});if(sb.current.length>500)sb.current=sb.current.slice(-250)}vq.current.push({tid:tid,bn:bn,time:time})},[]);
   var sch=uc(function(){if(!ac.current)return;var ct=ac.current.currentTime,c=cf.current;
     if(tO&&mc.current!==lt2.current){if(mc.current>0&&mc.current%(tB2||4)===0){var nb=tb.current+(tP||5);if(nb<=tE){tb.current=nb;cf.current=Object.assign({},cf.current,{bpm:nb})}}lt2.current=mc.current}
@@ -732,7 +757,7 @@ function App(){
                   h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:'#888'}},wkSes.length),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'SESSIONS')),
                   h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:avgAcc>=70?'rgba(200,255,200,0.7)':avgAcc>=40?'rgba(255,255,200,0.7)':'rgba(255,200,200,0.7)'}},avgAcc+'%'),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'AVG ACC')),
                   h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:'rgba(200,255,200,0.7)'}},bestS.goodPct+'%'),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'BEST')),
-                  h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:'#666'}},totalHits),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'HITS'))))})(),
+                  h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:streak>0?'#fcc419':'#666'}},streak>0?streak+'\uD83D\uDD25':'0'),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'STREAK'))))})(),
             /* Recent trend - last 10 sessions as inline bars */
             ses.length>=3&&h('div',{style:Object.assign({},CD,{marginBottom:16})},
               h('div',{style:LB},'RECENT TREND'),
@@ -762,9 +787,9 @@ function App(){
       h('div',{className:'capsule'},
         h('button',{onClick:tgPl,style:{width:52,height:52,borderRadius:'50%',border:'none',background:pl?'rgba(255,255,255,0.1)':'#e8e8e8',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}},
           pl?h('div',{style:{width:16,height:16,borderRadius:2,background:'#e8e8e8'}}):h('div',{style:{width:0,height:0,borderStyle:'solid',borderWidth:'9px 0 9px 16px',borderColor:'transparent transparent transparent #0a0a0a',marginLeft:2}})),
-        h('div',{onClick:function(){setSh(true)},style:{textAlign:'center',minWidth:50,cursor:'pointer'}},
+        h('div',{onClick:tapTempo,style:{textAlign:'center',minWidth:50,cursor:'pointer',userSelect:'none'}},
           h('div',{style:{fontSize:20,fontWeight:800,color:'#e0e0e0',lineHeight:1}},(function(){var d=tO&&pl?tb.current:bpm;return d%1===0?d:d.toFixed(1)})()),
-          h('div',{style:{fontSize:7,fontWeight:600,color:'#444',letterSpacing:2}},'BPM'),
+          h('div',{style:{fontSize:7,fontWeight:600,color:tTaps.length>=2?'rgba(200,255,200,0.5)':'#444',letterSpacing:2}},tTaps.length>=2?'TAP '+tTaps.length:'BPM'),
           actPjObj&&h('div',{style:{fontSize:7,fontWeight:600,color:actPjObj.color,letterSpacing:1,marginTop:1}},actPjObj.name.slice(0,12))),
         h('button',{onClick:tgR,style:{width:52,height:52,borderRadius:'50%',flexShrink:0,background:isR?'rgba(255,40,40,0.15)':'rgba(255,255,255,0.04)',border:isR?'2px solid rgba(255,60,60,0.4)':'2px solid #2a2a2a',display:'flex',alignItems:'center',justifyContent:'center'}},
           isR?h('div',{style:{width:16,height:16,borderRadius:2,background:'#ff5555'}}):h('div',{style:{width:18,height:18,borderRadius:'50%',background:'#ff4444'}})))),
@@ -809,6 +834,22 @@ function App(){
               h('select',{value:cE.normalSound,onChange:function(e){uT(cE.id,{normalSound:e.target.value,accentSound:e.target.value})},style:{flex:1,background:'#0a0a0a',color:'#888',fontSize:11,padding:'8px 10px',borderRadius:8,border:'1px solid #1a1a1a',outline:'none'}},
                 ['Clicks','Mallet','Bell','Drum','Cymbal'].map(function(cat){return h('optgroup',{key:cat,label:cat},SND.filter(function(s){return s.c===cat}).map(function(s){return h('option',{key:s.id,value:s.id},s.n)}))})),
               trks.length>1&&h('button',{onClick:function(){rT(cE.id)},style:{padding:'8px 14px',borderRadius:8,background:'#141414',border:'1px solid #1a1a1a',color:'#ff6666',fontSize:10,fontWeight:700}},'DEL'))))))
+      ,h('div',{style:Object.assign({},CD,{marginTop:4})},
+        h('div',{style:LB},'DATA'),
+        h('div',{style:{display:'flex',gap:8}},
+          h('button',{onClick:exportData,style:{flex:1,padding:'10px',borderRadius:10,background:'#141414',border:'1px solid #1a1a1a',color:'#666',fontSize:10,fontWeight:700}},'\u2B07 EXPORT BACKUP'),
+          h('label',{style:{flex:1,padding:'10px',borderRadius:10,background:'#141414',border:'1px solid #1a1a1a',color:'#666',fontSize:10,fontWeight:700,textAlign:'center',cursor:'pointer'}},'\u2B06 IMPORT',h('input',{type:'file',accept:'.json',onChange:importData,style:{display:'none'}}))))
+      ,h('div',{style:{textAlign:'center',padding:'12px 0 20px',fontSize:9,color:'#222'}},'Polyrhythm Pro v11 \u00B7 '+ses.length+' sessions \u00B7 '+projs.length+' projects'+(streak>0?' \u00B7 '+streak+' day streak':''))
+    ,/* ONBOARDING OVERLAY */
+    !obD&&h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:200,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:32}},
+      h('div',{style:{fontSize:28,fontWeight:900,color:'#e0e0e0',marginBottom:8}},'Polyrhythm Pro'),
+      h('div',{style:{fontSize:11,color:'#444',marginBottom:32}},'v11 \u00B7 Practice with precision'),
+      h('div',{style:{width:'100%',maxWidth:280}},
+        [{icon:'\u2190 \u2192',title:'Swipe to navigate',desc:'3 screens: Projects, Metronome, Sessions'},{icon:'\u2630',title:'Settings sheet',desc:'Pull up from SETTINGS button or sequencer strip'},{icon:'\u25CE',title:'Tap BPM for tempo',desc:'Tap the BPM display 3+ times to set tempo'},{icon:'\u25CF',title:'Record & analyze',desc:'Red button records, analyzes your timing accuracy'},{icon:'\u26A1',title:'Projects & setlists',desc:'Organize presets, chain them into setlists'}].map(function(item,i){
+          return h('div',{key:i,style:{display:'flex',gap:14,alignItems:'center',marginBottom:20}},
+            h('div',{style:{width:40,height:40,borderRadius:12,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,color:'#666',flexShrink:0}},item.icon),
+            h('div',null,h('div',{style:{fontSize:12,fontWeight:700,color:'#ccc'}},item.title),h('div',{style:{fontSize:10,color:'#444',marginTop:2}},item.desc)))})),
+      h('button',{onClick:function(){sObD(true)},style:{marginTop:16,padding:'14px 40px',borderRadius:14,background:'rgba(255,255,255,0.08)',border:'1.5px solid rgba(255,255,255,0.15)',color:'#ccc',fontSize:13,fontWeight:700,letterSpacing:1}},'GET STARTED'))
   )}
 ReactDOM.render(React.createElement(App),document.getElementById('root'));
 if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){})}
