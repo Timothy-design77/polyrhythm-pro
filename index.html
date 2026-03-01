@@ -174,6 +174,7 @@ function TSC(p){
     ng&&h('div',{style:{textAlign:'center',fontSize:9,color:g.reduce(function(a,b){return a+b},0)===n?'#555':'#ff6666',marginTop:8}},'= '+g.reduce(function(a,b){return a+b},0)+' beats'))}
 
 var _justRec=false; /* module-level flag: skip IDB load right after recording (not a hook) */
+var _recMime=''; /* actual MIME type used by MediaRecorder */
 /* MAIN APP */
 function App(){
   /* --- v10 state (all preserved) --- */
@@ -429,7 +430,7 @@ function App(){
     cDN.current=cDel; /* store ref for cleanup */
     rC.current=[];
     try{var mt='audio/webm;codecs=opus';if(!MediaRecorder.isTypeSupported(mt)){mt='audio/webm';if(!MediaRecorder.isTypeSupported(mt))mt=''}
-      var opts=mt?{mimeType:mt}:undefined;var m=new MediaRecorder(mx.current.stream,opts);m.ondataavailable=function(e){if(e.data.size>0)rC.current.push(e.data)};m.start(100);mr.current=m}catch(e){console.error('MediaRecorder failed:',e);sME('Recording not supported on this browser')}
+      var opts=mt?{mimeType:mt}:undefined;var m=new MediaRecorder(mx.current.stream,opts);_recMime=m.mimeType||mt||'audio/webm';m.ondataavailable=function(e){if(e.data.size>0)rC.current.push(e.data)};m.start(100);mr.current=m}catch(e){console.error('MediaRecorder failed:',e);sME('Recording not supported on this browser')}
     ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;isRRef.current=true;sR(true)
   }).catch(function(e){sME('Mic access denied. Check permissions.');console.error(e)})}
 
@@ -447,7 +448,7 @@ function App(){
     var chunks=rC.current.slice();var mxNode=mx.current;mx.current=null;
     var on=ol.current.slice(),fi=aPf?on.filter(function(o){return o.instrument}):on;
     var ssId=Date.now().toString(36);
-    setTimeout(function(){try{if(chunks.length>0){var bl=new Blob(chunks,{type:'audio/webm'});sRU(URL.createObjectURL(bl));
+    setTimeout(function(){try{if(chunks.length>0){var bl=new Blob(chunks,{type:_recMime||'audio/webm'});sRU(URL.createObjectURL(bl));
       /* Save recording blob to IndexedDB linked to session */
       IDB.save(ssId,bl).catch(function(){})}else{sRU(null);
       /* No chunks - remove hasRecording flag from session */
@@ -495,7 +496,8 @@ function App(){
     if(actPj){sProjs(function(pjs){return pjs.map(function(pj){if(pj.id!==actPj)return pj;return Object.assign({},pj,{presetIds:(pj.presetIds||[]).concat([pid])})})})}}
   function ldP(pr){sB(pr.bpm);if(pr.tsNum){sTN(pr.tsNum);sTD(pr.tsDen);sTG(pr.tsGrp)}if(pr.sub)sSu(pr.sub);if(pr.vol!==undefined)sV(pr.vol);sTr(pr.tracks.map(function(t){return Object.assign({},t,{id:Math.random().toString(36).substr(2,9)})}));sPO(pr.tracks.length>1);if(pl)tgPl();if(pr.projectId)sActPj(pr.projectId)}
   function pvS(sid){iAC();if(ac.current.state==='suspended')ac.current.resume();var tg=ac.current.createGain();tg.connect(co.current||ac.current.destination);tg.gain.value=vol*4;var rs=rSid(sid);if(SE[rs])SE[rs](ac.current,ac.current.currentTime+.01,true,1.2,tg)}
-  function pbA(){if(!rU)return;if(pA.current){pA.current.pause();pA.current=null;sPB(false);return}var au=new Audio(rU);au.onended=function(){sPB(false);pA.current=null};au.play();pA.current=au;sPB(true)}
+  function pbA(){if(!rU)return;if(pA.current){pA.current.pause();pA.current=null;sPB(false);return}var au=new Audio(rU);au.onended=function(){sPB(false);pA.current=null};au.onerror=function(){sPB(false);pA.current=null;sME('Playback failed')};
+    var pp=au.play();if(pp&&pp.catch)pp.catch(function(e){sPB(false);pA.current=null;console.error('Playback err:',e)});pA.current=au;sPB(true)}
 
   /* Load recording from IndexedDB when viewing a session */
   var prevSId=ur(null);
@@ -767,7 +769,7 @@ function App(){
             /* Recording playback */
             (rU||cS.hasRecording)&&h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},
               h('div',{style:Object.assign({},LB,{display:'flex',justifyContent:'space-between'})},h('span',null,'RECORDING'),
-                rU&&h('a',{href:rU,download:'session-'+cS.id+'.webm',style:{fontSize:10,color:'#555',textDecoration:'none'}},'\u2B07 Download')),
+                rU&&h('a',{href:rU,download:'session-'+cS.id+(_recMime.indexOf('mp4')>=0?'.m4a':'.webm'),style:{fontSize:10,color:'#555',textDecoration:'none'}},'\u2B07 Download')),
               rU?h('div',{style:{display:'flex',gap:8,alignItems:'center'}},
                 h('button',{onClick:pbA,style:{width:44,height:44,borderRadius:'50%',background:pB?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.06)',border:'1px solid #222',display:'flex',alignItems:'center',justifyContent:'center'}},
                   pB?h('div',{style:{width:10,height:10,borderRadius:1,background:'#ccc'}}):h('div',{style:{width:0,height:0,borderStyle:'solid',borderWidth:'7px 0 7px 12px',borderColor:'transparent transparent transparent #ccc',marginLeft:2}})),
