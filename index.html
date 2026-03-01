@@ -384,7 +384,12 @@ function App(){
     mi.current=stream;an.current=ac.current.createAnalyser();an.current.fftSize=4096;an.current.smoothingTimeConstant=0.3;
     mS.current=ac.current.createMediaStreamSource(stream);mS.current.connect(an.current);
     mx.current=ac.current.createMediaStreamDestination();var mG=ac.current.createGain();mG.gain.value=1;mS.current.connect(mG);mG.connect(mx.current);
-    if(mg.current)mg.current.connect(mx.current);rC.current=[];
+    /* Delay click path to align with mic input latency in recording */
+    var cDel=ac.current.createDelay(0.5);var inLat=(ac.current.baseLatency||0)+(ac.current.outputLatency||0);
+    cDel.delayTime.value=Math.max(0.01,inLat>0?inLat:0.04);
+    if(mg.current){mg.current.connect(cDel);cDel.connect(mx.current)}
+    pA.current=cDel; /* store ref for cleanup */
+    rC.current=[];
     try{var mt='audio/webm;codecs=opus';if(!MediaRecorder.isTypeSupported(mt)){mt='audio/webm';if(!MediaRecorder.isTypeSupported(mt))mt=''}
       var opts=mt?{mimeType:mt}:undefined;var m=new MediaRecorder(mx.current.stream,opts);m.ondataavailable=function(e){if(e.data.size>0)rC.current.push(e.data)};m.start(100);mr.current=m}catch(e){console.error('MediaRecorder failed:',e);sME('Recording not supported on this browser')}
     ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;isRRef.current=true;sR(true)
@@ -394,8 +399,12 @@ function App(){
     // Stop MediaRecorder FIRST while AC is still running
     var mrRef=mr.current;mr.current=null;
     if(mrRef&&mrRef.state!=='inactive'){try{mrRef.stop()}catch(e){}}
-    // Safely disconnect mg from mix dest WITHOUT breaking mg→co
-    if(mg.current&&mx.current){try{mg.current.disconnect(mx.current)}catch(e){try{mg.current.disconnect();if(co.current)mg.current.connect(co.current)}catch(e2){}}}
+    // Disconnect click delay node from mix dest
+    if(pA.current){try{pA.current.disconnect()}catch(e){}pA.current=null}
+    if(mg.current&&mx.current){try{mg.current.disconnect(mx.current)}catch(e){}}
+    // Ensure mg→co is intact
+    if(mg.current&&co.current){try{mg.current.connect(co.current)}catch(e){}}
+    if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;wd.current=new Uint8Array(0);
     if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;wd.current=new Uint8Array(0);
     // Build blob after short delay for final data chunk
     var chunks=rC.current.slice();var mxNode=mx.current;mx.current=null;
@@ -669,36 +678,84 @@ function App(){
       h('div',{className:'screen',style:{paddingTop:48}},
         h('div',{style:{padding:16}},
           cS?
-          h('div',null,
-            h('button',{onClick:function(){sCS(null)},style:{fontSize:10,color:'#444',background:'none',border:'none',marginBottom:12,fontFamily:'inherit'}},'\u2190 Back'),
-            h('div',{style:{textAlign:'center',marginBottom:20}},
+          /* Session detail */
+          (function(){var si=ses.indexOf(cS);if(si<0)si=ses.findIndex(function(s){return s.id===cS.id});var prev=si>0?ses[si-1]:null,next=si<ses.length-1?ses[si+1]:null;
+            var pjO=cS.projectId?projs.find(function(p){return p.id===cS.projectId}):null;
+            return h('div',null,
+            h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}},
+              h('button',{onClick:function(){sCS(null)},style:{fontSize:10,color:'#444',background:'none',border:'none',fontFamily:'inherit'}},'\u2190 Back'),
+              h('div',{style:{display:'flex',gap:6}},
+                prev&&h('button',{onClick:function(){sCS(prev)},style:{padding:'4px 10px',borderRadius:8,background:'#141414',border:'1px solid #1a1a1a',color:'#555',fontSize:10}},'\u25C0 Prev'),
+                next&&h('button',{onClick:function(){sCS(next)},style:{padding:'4px 10px',borderRadius:8,background:'#141414',border:'1px solid #1a1a1a',color:'#555',fontSize:10}},'Next \u25B6'))),
+            /* Date + project badge */
+            h('div',{style:{textAlign:'center',marginBottom:4}},
+              h('div',{style:{fontSize:10,color:'#333'}},new Date(cS.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})),
+              pjO&&h('div',{style:{display:'inline-block',marginTop:4,padding:'2px 10px',borderRadius:6,background:pjO.color+'15',border:'1px solid '+pjO.color+'33'}},h('span',{style:{fontSize:8,fontWeight:700,color:pjO.color,letterSpacing:1}},pjO.name))),
+            /* Big accuracy */
+            h('div',{style:{textAlign:'center',marginBottom:16}},
               h('div',{style:{fontSize:56,fontWeight:900,color:cS.goodPct>=70?'rgba(200,255,200,0.8)':cS.goodPct>=40?'rgba(255,255,200,0.8)':'rgba(255,200,200,0.8)'}},cS.goodPct+'%'),
               h('div',{style:{fontSize:10,color:'#444',fontWeight:600,letterSpacing:2}},'\u00B125ms ACCURACY')),
-            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:16}},
-              h('div',{style:{background:'#111',borderRadius:10,padding:'12px 8px',textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:'rgba(200,255,200,0.7)'}},cS.perfectPct+'%'),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'PERFECT')),
-              h('div',{style:{background:'#111',borderRadius:10,padding:'12px 8px',textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:'#666'}},cS.totalHits),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'HITS')),
-              h('div',{style:{background:'#111',borderRadius:10,padding:'12px 8px',textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:cS.avgDelta>0?'rgba(255,200,200,0.7)':'rgba(200,220,255,0.7)'}},cS.avgDelta>0?'+'+cS.avgDelta+'ms':cS.avgDelta+'ms'),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},cS.avgDelta>0?'LATE':'EARLY'))),
-            h('div',{style:{textAlign:'center',fontSize:10,color:'#333',marginBottom:16}},cS.bpm+' BPM \u00B7 '+(cS.meter||'4/4')+(cS.instrument?' \u00B7 '+cS.instrument:'')),
+            /* Stats grid */
+            h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:16}},
+              h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:'rgba(200,255,200,0.7)'}},cS.perfectPct+'%'),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'PERFECT')),
+              h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:'#666'}},cS.totalHits),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'HITS')),
+              h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:cS.avgDelta>0?'rgba(255,200,200,0.7)':'rgba(200,220,255,0.7)'}},cS.avgDelta>0?'+'+cS.avgDelta:cS.avgDelta),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},cS.avgDelta>0?'LATE ms':'EARLY ms')),
+              h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:'#666'}},cS.stdDev||0),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'STD DEV'))),
+            h('div',{style:{textAlign:'center',fontSize:10,color:'#333',marginBottom:14}},cS.bpm+' BPM \u00B7 '+(cS.meter||'4/4')+(cS.instrument?' \u00B7 '+cS.instrument:'')),
+            /* Recording playback */
             rU&&h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},
               h('div',{style:Object.assign({},LB,{display:'flex',justifyContent:'space-between'})},h('span',null,'RECORDING'),h('a',{href:rU,download:'session.webm',style:{fontSize:8,color:'#444',textDecoration:'none'}},'\u2B07 Download')),
               h('div',{style:{display:'flex',gap:8,alignItems:'center'}},
                 h('button',{onClick:pbA,style:{width:36,height:36,borderRadius:'50%',background:pB?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.06)',border:'1px solid #222',display:'flex',alignItems:'center',justifyContent:'center'}},
                   pB?h('div',{style:{width:10,height:10,borderRadius:1,background:'#ccc'}}):h('div',{style:{width:0,height:0,borderStyle:'solid',borderWidth:'6px 0 6px 11px',borderColor:'transparent transparent transparent #ccc',marginLeft:2}})),
                 h('div',{style:{flex:1,height:2,background:'#1a1a1a',borderRadius:1}}))),
+            /* Distribution */
             h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},h('div',{style:LB},'DISTRIBUTION'),h('canvas',{ref:hC,style:{width:'100%',height:100,display:'block'}})),
-            cS.onsets&&cS.onsets.length>5&&h('div',{style:{background:'#111',borderRadius:14,padding:14}},h('div',{style:LB},'DRIFT'),h('canvas',{ref:dC,style:{width:'100%',height:70,display:'block'}})))
+            /* Drift */
+            cS.onsets&&cS.onsets.length>5&&h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},h('div',{style:LB},'DRIFT'),h('canvas',{ref:dC,style:{width:'100%',height:70,display:'block'}})),
+            /* Delete */
+            h('div',{style:{textAlign:'center',marginTop:8}},
+              h('button',{onClick:function(){if(confirm('Delete this session?')){sSs(function(p){return p.filter(function(x){return x.id!==cS.id})});sCS(next||prev||null)}},style:{fontSize:9,color:'#ff6666',background:'none',border:'none',opacity:.5}},'Delete Session')))})()
           :
-          ses.length>0?h('div',null,
-            h('div',{style:LB},'RECENT SESSIONS'),
-            ses.slice().reverse().slice(0,30).map(function(s,i){return h('button',{key:i,onClick:function(){sCS(s)},style:{width:'100%',padding:14,borderRadius:12,border:'1px solid #1a1a1a',background:'#111',textAlign:'left',marginBottom:8,display:'block'}},
-              h('div',{style:{display:'flex',justifyContent:'space-between'}},
-                h('span',{style:{fontSize:16,fontWeight:800,color:s.goodPct>=70?'rgba(200,255,200,0.7)':s.goodPct>=40?'rgba(255,255,200,0.7)':'rgba(255,200,200,0.7)'}},s.goodPct+'%'),
-                h('span',{style:{fontSize:10,color:'#333'}},s.totalHits+' hits')),
-              h('div',{style:{fontSize:10,color:'#333',marginTop:4}},s.bpm+' BPM \u00B7 '+(s.meter||'4/4')+(s.instrument?' \u00B7 '+s.instrument:'')+' \u00B7 '+new Date(s.date).toLocaleDateString()))})):
-          h('div',{style:{textAlign:'center',padding:'60px 20px'}},
-            h('div',{style:{fontSize:40,color:'#1a1a1a'}},'\u25CE'),
-            h('div',{style:{fontSize:13,fontWeight:700,color:'#333',marginTop:16}},'No sessions yet'),
-            h('div',{style:{fontSize:11,color:'#222',marginTop:6}},'Tap REC to start recording'))))),
+          /* Session list */
+          h('div',null,
+            /* This week summary */
+            (function(){var now=new Date(),dow=now.getDay(),wkStart=new Date(now);wkStart.setDate(now.getDate()-dow);wkStart.setHours(0,0,0,0);
+              var wkSes=ses.filter(function(s){return new Date(s.date)>=wkStart});
+              if(wkSes.length===0)return null;
+              var avgAcc=Math.round(wkSes.reduce(function(a,s){return a+(s.goodPct||0)},0)/wkSes.length);
+              var bestS=wkSes.reduce(function(a,s){return(s.goodPct||0)>(a.goodPct||0)?s:a},wkSes[0]);
+              var totalHits=wkSes.reduce(function(a,s){return a+(s.totalHits||0)},0);
+              return h('div',{style:Object.assign({},CD,{border:'1px solid rgba(200,255,200,0.06)',marginBottom:16})},
+                h('div',{style:LB},'THIS WEEK'),
+                h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8}},
+                  h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:'#888'}},wkSes.length),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'SESSIONS')),
+                  h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:avgAcc>=70?'rgba(200,255,200,0.7)':avgAcc>=40?'rgba(255,255,200,0.7)':'rgba(255,200,200,0.7)'}},avgAcc+'%'),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'AVG ACC')),
+                  h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:'rgba(200,255,200,0.7)'}},bestS.goodPct+'%'),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'BEST')),
+                  h('div',{style:{textAlign:'center'}},h('div',{style:{fontSize:16,fontWeight:800,color:'#666'}},totalHits),h('div',{style:{fontSize:7,color:'#333',fontWeight:700,letterSpacing:1}},'HITS'))))})(),
+            /* Recent trend - last 10 sessions as inline bars */
+            ses.length>=3&&h('div',{style:Object.assign({},CD,{marginBottom:16})},
+              h('div',{style:LB},'RECENT TREND'),
+              h('div',{style:{display:'flex',alignItems:'flex-end',gap:3,height:50}},
+                ses.slice(-10).map(function(s,i){var pct=s.goodPct||0;return h('div',{key:i,onClick:function(){sCS(s)},style:{flex:1,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:2}},
+                  h('div',{style:{fontSize:7,color:'#333'}},pct),
+                  h('div',{style:{width:'100%',height:Math.max(4,pct*.45),borderRadius:3,background:pct>=70?'rgba(200,255,200,0.3)':pct>=40?'rgba(255,255,200,0.3)':'rgba(255,200,200,0.3)'}}))}))),
+            /* Date-grouped sessions */
+            ses.length>0?(function(){var grp={};ses.slice().reverse().forEach(function(s){var d=new Date(s.date).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});if(!grp[d])grp[d]=[];grp[d].push(s)});
+              return Object.keys(grp).slice(0,10).map(function(d){return h('div',{key:d},
+                h('div',{style:{fontSize:9,fontWeight:700,color:'#333',letterSpacing:1,marginBottom:6,marginTop:12}},d.toUpperCase()),
+                grp[d].map(function(s,i){var pjO=s.projectId?projs.find(function(p){return p.id===s.projectId}):null;
+                  return h('button',{key:i,onClick:function(){sCS(s)},style:{width:'100%',padding:12,borderRadius:12,border:'1px solid #1a1a1a',background:'#111',textAlign:'left',marginBottom:6,display:'block',position:'relative',overflow:'hidden'}},
+                    pjO&&h('div',{style:{position:'absolute',left:0,top:0,bottom:0,width:4,background:pjO.color}}),
+                    h('div',{style:{paddingLeft:pjO?10:0,display:'flex',justifyContent:'space-between',alignItems:'center'}},
+                      h('div',null,
+                        h('div',{style:{fontSize:9,color:'#444'}},new Date(s.date).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})+(s.instrument?' \u00B7 '+s.instrument:'')),
+                        h('div',{style:{fontSize:10,color:'#444',marginTop:2}},s.bpm+' BPM \u00B7 '+(s.meter||'4/4')+' \u00B7 '+s.totalHits+' hits')),
+                      h('span',{style:{fontSize:18,fontWeight:800,color:s.goodPct>=70?'rgba(200,255,200,0.7)':s.goodPct>=40?'rgba(255,255,200,0.7)':'rgba(255,200,200,0.7)'}},s.goodPct+'%')))}))})})()
+            :h('div',{style:{textAlign:'center',padding:'60px 20px'}},
+              h('div',{style:{fontSize:40,color:'#1a1a1a'}},'\u25CE'),
+              h('div',{style:{fontSize:13,fontWeight:700,color:'#333',marginTop:16}},'No sessions yet'),
+              h('div',{style:{fontSize:11,color:'#222',marginTop:6}},'Tap REC to start recording')))))),
 
     /* FLOATING CAPSULE */
     h('div',{className:'capsule-wrap'},
