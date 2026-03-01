@@ -454,13 +454,18 @@ function App(){
       /* No chunks - remove hasRecording flag from session */
       sSs(function(p){return p.map(function(s){if(s.id!==ssId)return s;return Object.assign({},s,{hasRecording:false})})})}
     }catch(e){console.error('Blob err',e);sRU(null)}},400);
-    if(fi.length>0){var ds=fi.map(function(o){return o.delta}),av=ds.reduce(function(a,b){return a+b},0)/ds.length,aa=ds.map(function(d){return Math.abs(d)}).reduce(function(a,b){return a+b},0)/ds.length;
-      var sd=ds.length>1?Math.sqrt(ds.reduce(function(a,d){return a+Math.pow(d-av,2)},0)/ds.length):0,pf=ds.filter(function(d){return Math.abs(d)<=10}).length,gd=ds.filter(function(d){return Math.abs(d)<=25}).length;
-      var ss={id:ssId,date:new Date().toISOString(),bpm:cf.current.bpm,meter:cf.current.meter.n,sub:cf.current.sub,instrument:aPf?aPf.name:null,projectId:actPj||null,hasRecording:true,
-        totalHits:fi.length,allHits:on.length,avgDelta:Math.round(av*10)/10,avgAbsDelta:Math.round(aa*10)/10,stdDev:Math.round(sd*10)/10,
-        perfectPct:Math.round(pf/Math.max(fi.length,1)*100),goodPct:Math.round(gd/Math.max(fi.length,1)*100),onsets:fi.slice(0,300)};
-      _justRec=true;sCS(ss);sSs(function(p){return p.concat([ss])});
-      if(actPj){sProjs(function(pjs){return pjs.map(function(pj){if(pj.id!==actPj)return pj;return Object.assign({},pj,{sessionIds:(pj.sessionIds||[]).concat([ss.id]),lastOpened:new Date().toISOString()})})})}}}
+    var ds=fi.length>0?fi.map(function(o){return o.delta}):[];
+    var av=ds.length>0?ds.reduce(function(a,b){return a+b},0)/ds.length:0;
+    var aa=ds.length>0?ds.map(function(d){return Math.abs(d)}).reduce(function(a,b){return a+b},0)/ds.length:0;
+    var sd=ds.length>1?Math.sqrt(ds.reduce(function(a,d){return a+Math.pow(d-av,2)},0)/ds.length):0;
+    var pf=ds.length>0?ds.filter(function(d){return Math.abs(d)<=10}).length:0;
+    var gd=ds.length>0?ds.filter(function(d){return Math.abs(d)<=25}).length:0;
+    var ss={id:ssId,date:new Date().toISOString(),bpm:cf.current.bpm,meter:cf.current.meter.n,sub:cf.current.sub,instrument:aPf?aPf.name:null,projectId:actPj||null,hasRecording:chunks.length>0,
+      totalHits:fi.length,allHits:on.length,avgDelta:Math.round(av*10)/10,avgAbsDelta:Math.round(aa*10)/10,stdDev:Math.round(sd*10)/10,
+      perfectPct:Math.round(pf/Math.max(fi.length,1)*100),goodPct:Math.round(gd/Math.max(fi.length,1)*100),onsets:fi.slice(0,300)};
+    _justRec=true;sCS(ss);sSs(function(p){return p.concat([ss])});
+    if(actPj){sProjs(function(pjs){return pjs.map(function(pj){if(pj.id!==actPj)return pj;return Object.assign({},pj,{sessionIds:(pj.sessionIds||[]).concat([ss.id]),lastOpened:new Date().toISOString()})})})}}
+
 
   function tgPl(){if(pl){clearTimeout(tm.current);sPl(false);sAB({});
       var wasRec=isRRef.current;if(wasRec)spR();
