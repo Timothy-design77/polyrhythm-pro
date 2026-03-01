@@ -173,6 +173,7 @@ function TSC(p){
         h('button',{onClick:aG,style:{width:40,height:40,borderRadius:10,border:'1px dashed #333',background:'transparent',color:'#555',fontSize:16}},'+'))),
     ng&&h('div',{style:{textAlign:'center',fontSize:9,color:g.reduce(function(a,b){return a+b},0)===n?'#555':'#ff6666',marginTop:8}},'= '+g.reduce(function(a,b){return a+b},0)+' beats'))}
 
+var _justRec=false; /* module-level flag: skip IDB load right after recording (not a hook) */
 /* MAIN APP */
 function App(){
   /* --- v10 state (all preserved) --- */
@@ -457,7 +458,7 @@ function App(){
       var ss={id:ssId,date:new Date().toISOString(),bpm:cf.current.bpm,meter:cf.current.meter.n,sub:cf.current.sub,instrument:aPf?aPf.name:null,projectId:actPj||null,hasRecording:true,
         totalHits:fi.length,allHits:on.length,avgDelta:Math.round(av*10)/10,avgAbsDelta:Math.round(aa*10)/10,stdDev:Math.round(sd*10)/10,
         perfectPct:Math.round(pf/Math.max(fi.length,1)*100),goodPct:Math.round(gd/Math.max(fi.length,1)*100),onsets:fi.slice(0,300)};
-      sCS(ss);sSs(function(p){return p.concat([ss])});
+      _justRec=true;sCS(ss);sSs(function(p){return p.concat([ss])});
       if(actPj){sProjs(function(pjs){return pjs.map(function(pj){if(pj.id!==actPj)return pj;return Object.assign({},pj,{sessionIds:(pj.sessionIds||[]).concat([ss.id]),lastOpened:new Date().toISOString()})})})}}}
 
   function tgPl(){if(pl){clearTimeout(tm.current);sPl(false);sAB({});
@@ -469,7 +470,7 @@ function App(){
     else{iAC();ac.current.resume().then(function(){try{if('wakeLock' in navigator)navigator.wakeLock.request('screen').then(function(w){wl.current=w}).catch(function(){})}catch(e){}
       var ct=ac.current.currentTime;cf.current.tracks.forEach(function(t){nn.current[t.id]=ct+.1;cb2.current[t.id]=0});vq.current=[];mc.current=0;ms.current=ct+.1;sb.current=[];lt2.current=-1;
       if(tO){tb.current=tS;cf.current=Object.assign({},cf.current,{bpm:tS})}if(ciB>0){ci2.current=true;cr.current=ciB}else ci2.current=false;sPl(true);sch()})}}
-  function tgR(){if(isR){spR();/* Stop recording but keep metronome playing */}
+  function tgR(){if(isR)tgPl();
     else{if(!pl){iAC();ac.current.resume().then(function(){try{if('wakeLock' in navigator)navigator.wakeLock.request('screen').then(function(w){wl.current=w}).catch(function(){})}catch(e){}
       var ct=ac.current.currentTime;cf.current.tracks.forEach(function(t){nn.current[t.id]=ct+.1;cb2.current[t.id]=0});vq.current=[];mc.current=0;ms.current=ct+.1;sb.current=[];lt2.current=-1;
       if(ciB>0){ci2.current=true;cr.current=ciB}else ci2.current=false;sPl(true);sch();stR()})}else stR()}}
@@ -502,6 +503,8 @@ function App(){
     if(!changed)return;
     /* Stop any playing audio */
     if(pA.current){pA.current.pause();pA.current=null;sPB(false)}
+    /* Skip IDB load if we just recorded this session - blob URL is being set via setTimeout */
+    if(_justRec){_justRec=false;return}
     if(!cS||!cS.hasRecording){sRU(function(prev){if(prev)URL.revokeObjectURL(prev);return null});return}
     var cancelled=false;
     IDB.load(cS.id).then(function(bl){if(cancelled)return;if(bl){sRU(function(prev){if(prev)URL.revokeObjectURL(prev);return URL.createObjectURL(bl)})}else{sRU(null)}}).catch(function(){if(!cancelled)sRU(null)});
