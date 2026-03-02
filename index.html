@@ -259,8 +259,10 @@ function App(){
   function onSwTS(e){var t=e.touches[0];swRef.current={sx:t.clientX,sy:t.clientY,st:Date.now()}}
   function onSwTE(e){var t=e.changedTouches[0],r=swRef.current,dx=t.clientX-r.sx,dy=t.clientY-r.sy,dt=Date.now()-r.st;
     if(Math.abs(dx)>50&&Math.abs(dx)>Math.abs(dy)*1.3&&dt<500){
-      if(dx<0&&scr<2)setScr(scr+1);
-      if(dx>0&&scr>0)setScr(scr-1)}}
+      var ns=scr;
+      if(dx<0&&scr<2)ns=scr+1;
+      if(dx>0&&scr>0)ns=scr-1;
+      if(ns!==scr){setScr(ns);if(ns!==2)sCS(null)}}}
 
   /* Project CRUD */
   function mkPj(){if(!cpN.trim())return;var pj={id:'pj'+Date.now().toString(36),name:cpN.trim(),color:PCOL[cpC%PCOL.length],created:new Date().toISOString(),lastOpened:new Date().toISOString(),notes:cpNo.trim(),presetIds:[],sessionIds:[]};
@@ -422,7 +424,7 @@ function App(){
   function stR(){sME('');navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(stream){
     mi.current=stream;an.current=ac.current.createAnalyser();an.current.fftSize=4096;an.current.smoothingTimeConstant=0.3;
     mS.current=ac.current.createMediaStreamSource(stream);mS.current.connect(an.current);
-    mx.current=ac.current.createMediaStreamDestination();var mG=ac.current.createGain();mG.gain.value=1;mS.current.connect(mG);mG.connect(mx.current);
+    mx.current=ac.current.createMediaStreamDestination();var mG=ac.current.createGain();mG.gain.value=3;mS.current.connect(mG);mG.connect(mx.current);
     /* Delay click path to align with mic input latency in recording */
     var cDel=ac.current.createDelay(0.5);
     cDel.delayTime.value=Math.max(0.005,rDl/1000);
