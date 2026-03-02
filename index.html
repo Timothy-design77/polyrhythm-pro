@@ -299,9 +299,8 @@ function App(){
   function slNext(){if(!runSl)return;
     /* Save current step session if recording */
     if(isRRef.current){isRRef.current=false;sR(false);var mrRef=mr.current;mr.current=null;if(mrRef&&mrRef.state!=='inactive')try{mrRef.stop()}catch(e){}
+      if(oG.current&&cDN.current)try{oG.current.disconnect(cDN.current)}catch(e){}
       if(cDN.current){try{cDN.current.disconnect()}catch(e){}cDN.current=null}
-      if(mg.current&&mx.current)try{mg.current.disconnect(mx.current)}catch(e){}
-      if(mg.current&&co.current)try{mg.current.connect(co.current)}catch(e){}
       if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;
       var on=ol.current.slice(),fi=aPf?on.filter(function(o){return o.instrument}):on;
       if(fi.length>0){var ds=fi.map(function(o){return o.delta}),av=ds.reduce(function(a,b){return a+b},0)/ds.length,gd=ds.filter(function(d){return Math.abs(d)<=25}).length;
@@ -328,7 +327,7 @@ function App(){
   var meter=um(function(){var n=tsN+'/'+tsD;if(tsD===8&&tsG.length>1)n=tsN+'/'+tsD+' ('+tsG.join('+')+')';return{n:n,num:tsN,den:tsD,grp:tsG}},[tsN,tsD,tsG]);
   var gs=gS(meter,sub),cE=trks[eT]||trks[0];
 
-  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol,_vbI:vbI,_vbD:vbD,_rcV:rcV,_rmV:rmV};if(mg.current&&ac.current){mg.current.gain.setTargetAtTime(vol*(isRRef.current?24.0:8.0),ac.current.currentTime,.05);if(oG.current)oG.current.gain.setTargetAtTime(isRRef.current?10.0:4.0,ac.current.currentTime,.05)}},[bpm,meter,sub,trks,vol,vbI,vbD,rcV,rmV]);
+  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol,_vbI:vbI,_vbD:vbD,_rcV:rcV,_rmV:rmV};if(mg.current&&ac.current){mg.current.gain.setTargetAtTime(vol*8.0,ac.current.currentTime,.05)}},[bpm,meter,sub,trks,vol,vbI,vbD,rcV,rmV]);
   ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
     /* Load presets - migrate old ones without IDs */
     var rawP=LS.g('pp10p')||[];var mp=rawP.map(function(p,i){if(p.id)return p;return Object.assign({},p,{id:'pm'+i+'_'+Date.now().toString(36),projectId:null})});
@@ -431,38 +430,28 @@ function App(){
   function stR(){sME('');navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(stream){
     mi.current=stream;an.current=ac.current.createAnalyser();an.current.fftSize=4096;an.current.smoothingTimeConstant=0.3;
     mS.current=ac.current.createMediaStreamSource(stream);mS.current.connect(an.current);
-    mx.current=ac.current.createMediaStreamDestination();var mG=ac.current.createGain();mG.gain.value=cf.current._rmV*6;mS.current.connect(mG);mG.connect(mx.current);
-    /* Delay click path to align with mic input latency in recording */
+    mx.current=ac.current.createMediaStreamDestination();
+    /* Mic path: mic → gain → mix dest */
+    var mG=ac.current.createGain();mG.gain.value=cf.current._rmV*4;mS.current.connect(mG);mG.connect(mx.current);
+    /* Click path: tap from AFTER compressor+outGain (oG) = exactly what speakers play */
     var cDel=ac.current.createDelay(0.5);
     cDel.delayTime.value=Math.max(0.005,rDl/1000);
-    /* Boost click - route through compressor replica to match live output */
-    var cBst=ac.current.createGain();cBst.gain.value=cf.current._rcV*8;
-    if(mg.current){mg.current.connect(cDel);cDel.connect(cBst);cBst.connect(mx.current)}
+    var cG=ac.current.createGain();cG.gain.value=cf.current._rcV;
+    if(oG.current){oG.current.connect(cDel);cDel.connect(cG);cG.connect(mx.current)}
     cDN.current=cDel; /* store ref for cleanup */
     rC.current=[];
     try{var mt='audio/webm;codecs=opus';if(!MediaRecorder.isTypeSupported(mt)){mt='audio/webm';if(!MediaRecorder.isTypeSupported(mt))mt=''}
       var opts=mt?{mimeType:mt}:undefined;var m=new MediaRecorder(mx.current.stream,opts);_recMime=m.mimeType||mt||'audio/webm';m.ondataavailable=function(e){if(e.data.size>0)rC.current.push(e.data)};m.start(100);mr.current=m}catch(e){console.error('MediaRecorder failed:',e);sME('Recording not supported on this browser')}
-    ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;isRRef.current=true;sR(true);
-    /* Tell OS we want full speaker volume during recording */
-    try{if(navigator.audioSession)navigator.audioSession.type='play-and-record'}catch(e){}
-    /* OS aggressively ducks speaker when mic is active — boost BOTH master and output gain to compensate */
-    if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(cf.current.vol*24.0,ac.current.currentTime,.01);
-    if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(10.0,ac.current.currentTime,.01)
+    ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;isRRef.current=true;sR(true)
   }).catch(function(e){sME('Mic access denied. Check permissions.');console.error(e)})}
 
   function spR(){isRRef.current=false;sR(false);
-    /* Restore normal gains (were boosted to compensate for OS mic ducking) */
-    if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(cf.current.vol*8.0,ac.current.currentTime,.02);
-    if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(4.0,ac.current.currentTime,.02);
-    try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
     // Stop MediaRecorder FIRST while AC is still running
     var mrRef=mr.current;mr.current=null;
     if(mrRef&&mrRef.state!=='inactive'){try{mrRef.stop()}catch(e){}}
-    // Disconnect click delay node from mix dest
+    // Disconnect recording chain: oG → delay → gain → mix dest
+    if(oG.current&&cDN.current){try{oG.current.disconnect(cDN.current)}catch(e){}}
     if(cDN.current){try{cDN.current.disconnect()}catch(e){}cDN.current=null}
-    if(mg.current&&mx.current){try{mg.current.disconnect(mx.current)}catch(e){}}
-    // Ensure mg→co is intact
-    if(mg.current&&co.current){try{mg.current.connect(co.current)}catch(e){}}
     if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;wd.current=new Uint8Array(0);
     // Build blob after short delay for final data chunk
     var chunks=rC.current.slice();var mxNode=mx.current;mx.current=null;
