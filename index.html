@@ -928,5 +928,12 @@ function App(){
       h('button',{onClick:function(){sObD(true)},style:{marginTop:16,padding:'14px 40px',borderRadius:14,background:'rgba(255,255,255,0.08)',border:'1.5px solid rgba(255,255,255,0.15)',color:'#ccc',fontSize:13,fontWeight:700,letterSpacing:1}},'GET STARTED'))
   )}
 ReactDOM.render(React.createElement(App),document.getElementById('root'));
-if('serviceWorker' in navigator){navigator.serviceWorker.register('sw.js').catch(function(){})}
+if('serviceWorker' in navigator){
+  /* Force clear stale caches from old SW versions */
+  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v3')caches.delete(k)})});
+  navigator.serviceWorker.getRegistrations().then(function(regs){
+    regs.forEach(function(r){r.update()});
+    if(regs.length===0)navigator.serviceWorker.register('sw.js').catch(function(){});
+  }).catch(function(){navigator.serviceWorker.register('sw.js').catch(function(){})})
+}
 </script></body></html>
