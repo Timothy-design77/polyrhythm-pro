@@ -176,6 +176,7 @@ function TSC(p){
 var _justRec=false; /* module-level flag: skip IDB load right after recording (not a hook) */
 var _recMime=''; /* actual MIME type used by MediaRecorder */
 var oG={current:null}; /* output gain node ref (module-level to preserve hook order) */
+var rCG={current:null}; /* recording click gain node (module-level) */
 /* MAIN APP */
 function App(){
   /* --- v10 state (all preserved) --- */
@@ -239,8 +240,9 @@ function App(){
   var _pbv=us(1),pbVol=_pbv[0],sPbVol=_pbv[1]; // playback volume
   var _vbI=us(1),vbI=_vbI[0],sVbI=_vbI[1]; // vibration intensity 0-1
   var _vbD=us(0),vbD=_vbD[0],sVbD=_vbD[1]; // vibration delay offset ms
-  var _rcV=us(1),rcV=_rcV[0],sRcV=_rcV[1]; // recording click volume 0-1
-  var _rmV=us(.8),rmV=_rmV[0],sRmV=_rmV[1]; // recording mic volume 0-1
+  var _rcV=us(.7),rcV=_rcV[0],sRcV=_rcV[1]; // recording click volume 0-1
+  var _rmV=us(.5),rmV=_rmV[0],sRmV=_rmV[1]; // recording mic volume 0-1
+  var _lbst=us(2),lBst=_lbst[0],sLBst=_lbst[1]; // live boost during recording 1-4x
   var ttRef=ur(null); // tap tempo reset timer
 
   function tapTempo(){var now=Date.now();var taps=tTaps.concat([now]).filter(function(t){return now-t<3000}).slice(-8);
@@ -258,7 +260,7 @@ function App(){
     var data={version:2,exported:new Date().toISOString(),settings:LS.g('pp10'),presets:sP,sessions:ses,profiles:prfs,projects:projs,setlists:setlists,activeProject:actPj};
     var bl=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='polyrhythm-pro-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(u)}
   function importData(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){try{var data=JSON.parse(ev.target.result);
-    if(data.settings){var d=data.settings;if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV)}
+    if(data.settings){var d=data.settings;if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV);if(d.lBst!==undefined)sLBst(d.lBst)}
     if(data.presets)sSP(data.presets);if(data.sessions)sSs(data.sessions);if(data.profiles)sPf(data.profiles);
     if(data.projects)sProjs(data.projects);if(data.setlists)sSls(data.setlists);if(data.activeProject)sActPj(data.activeProject);
     alert('Imported '+((data.sessions||[]).length)+' sessions, '+((data.presets||[]).length)+' presets, '+((data.projects||[]).length)+' projects')}catch(err){alert('Invalid backup file')}};r.readAsText(f)}
@@ -299,8 +301,10 @@ function App(){
   function slNext(){if(!runSl)return;
     /* Save current step session if recording */
     if(isRRef.current){isRRef.current=false;sR(false);var mrRef=mr.current;mr.current=null;if(mrRef&&mrRef.state!=='inactive')try{mrRef.stop()}catch(e){}
-      if(oG.current&&cDN.current)try{oG.current.disconnect(cDN.current)}catch(e){}
+      if(mg.current&&rCG.current)try{mg.current.disconnect(rCG.current)}catch(e){}
+      if(rCG.current){try{rCG.current.disconnect()}catch(e){};rCG.current=null}
       if(cDN.current){try{cDN.current.disconnect()}catch(e){}cDN.current=null}
+      if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(4.0,ac.current.currentTime,.02);
       if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;
       var on=ol.current.slice(),fi=aPf?on.filter(function(o){return o.instrument}):on;
       if(fi.length>0){var ds=fi.map(function(o){return o.delta}),av=ds.reduce(function(a,b){return a+b},0)/ds.length,gd=ds.filter(function(d){return Math.abs(d)<=25}).length;
@@ -327,8 +331,8 @@ function App(){
   var meter=um(function(){var n=tsN+'/'+tsD;if(tsD===8&&tsG.length>1)n=tsN+'/'+tsD+' ('+tsG.join('+')+')';return{n:n,num:tsN,den:tsD,grp:tsG}},[tsN,tsD,tsG]);
   var gs=gS(meter,sub),cE=trks[eT]||trks[0];
 
-  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol,_vbI:vbI,_vbD:vbD,_rcV:rcV,_rmV:rmV};if(mg.current&&ac.current){mg.current.gain.setTargetAtTime(vol*8.0,ac.current.currentTime,.05)}},[bpm,meter,sub,trks,vol,vbI,vbD,rcV,rmV]);
-  ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
+  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol,_vbI:vbI,_vbD:vbD,_rcV:rcV,_rmV:rmV,_lBst:lBst};if(mg.current&&ac.current){mg.current.gain.setTargetAtTime(vol*8.0,ac.current.currentTime,.05)}if(oG.current&&ac.current){oG.current.gain.setTargetAtTime(isRRef.current?4.0*lBst:4.0,ac.current.currentTime,.05)}},[bpm,meter,sub,trks,vol,vbI,vbD,rcV,rmV,lBst]);
+  ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV);if(d.lBst!==undefined)sLBst(d.lBst);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
     /* Load presets - migrate old ones without IDs */
     var rawP=LS.g('pp10p')||[];var mp=rawP.map(function(p,i){if(p.id)return p;return Object.assign({},p,{id:'pm'+i+'_'+Date.now().toString(36),projectId:null})});
     sSP(mp);
@@ -340,7 +344,7 @@ function App(){
     sProjs(LS.g('pp2_projects')||[]);sActPj(LS.g('pp2_actpj')||null);
     sSls(LS.g('pp2_setlists')||[]);sObD(LS.g('pp2_onboard')||false);
     sLd(true)},[]);
-  ue(function(){if(ld)LS.s('pp10',{bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks,sens:sns,latOff:lO,recDel:rDl,polyOn:poO,vbI:vbI,vbD:vbD,rcV:rcV,rmV:rmV})},[bpm,tsN,tsD,tsG,sub,vol,trks,sns,lO,rDl,poO,vbI,vbD,rcV,rmV,ld]);
+  ue(function(){if(ld)LS.s('pp10',{bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks,sens:sns,latOff:lO,recDel:rDl,polyOn:poO,vbI:vbI,vbD:vbD,rcV:rcV,rmV:rmV,lBst:lBst})},[bpm,tsN,tsD,tsG,sub,vol,trks,sns,lO,rDl,poO,vbI,vbD,rcV,rmV,lBst,ld]);
   ue(function(){if(ld)LS.s('pp10p',sP)},[sP,ld]);ue(function(){if(ld)LS.s('pp10s',ses.slice(-50))},[ses,ld]);ue(function(){if(ld)LS.s('pp10prof',prfs)},[prfs,ld]);
   ue(function(){if(ld)LS.s('pp2_projects',projs)},[projs,ld]);
   ue(function(){if(ld)LS.s('pp2_actpj',actPj)},[actPj,ld]);
@@ -427,30 +431,48 @@ function App(){
   ue(function(){af.current=requestAnimationFrame(uV);return function(){cancelAnimationFrame(af.current)}},[uV]);
 
   /* RECORDING - MIX MIC+CLICK */
+  /* Architecture: recording taps from mg (BEFORE compressor/oG) with normalizing gain.
+     Speaker output goes through compressor → oG as normal.
+     mg.gain = vol*8, so mg output peaks ~6-8. We divide by ~7 (×0.15) to normalize to ±1.0.
+     Mic gain is LOW — phone mic drums are loud, we don't want clipping. */
   function stR(){sME('');navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(stream){
     mi.current=stream;an.current=ac.current.createAnalyser();an.current.fftSize=4096;an.current.smoothingTimeConstant=0.3;
     mS.current=ac.current.createMediaStreamSource(stream);mS.current.connect(an.current);
     mx.current=ac.current.createMediaStreamDestination();
-    /* Mic path: mic → gain → mix dest */
-    var mG=ac.current.createGain();mG.gain.value=cf.current._rmV*4;mS.current.connect(mG);mG.connect(mx.current);
-    /* Click path: tap from AFTER compressor+outGain (oG) = exactly what speakers play */
+    /* Mic path: low gain to prevent clipping. Drums are LOUD to a phone mic.
+       At rmV=0.5 (default), gain=0.5. Mic peaks of 0.3 → 0.15 in recording. */
+    var mG=ac.current.createGain();mG.gain.value=cf.current._rmV;mS.current.connect(mG);mG.connect(mx.current);
+    /* Click path: mg → rCG(normalize) → delay → mx
+       At vol=0.8: mg=6.4, ×0.15=0.96. At vol=1.0: mg=8, ×0.15=1.2 (mild soft clip, ok).
+       rcV slider scales: at rcV=0.7 (default), 0.7×0.15=0.105, signal=6.4×0.105=0.67 */
+    rCG.current=ac.current.createGain();rCG.current.gain.value=cf.current._rcV*0.15;
     var cDel=ac.current.createDelay(0.5);
     cDel.delayTime.value=Math.max(0.005,rDl/1000);
-    var cG=ac.current.createGain();cG.gain.value=cf.current._rcV;
-    if(oG.current){oG.current.connect(cDel);cDel.connect(cG);cG.connect(mx.current)}
-    cDN.current=cDel; /* store ref for cleanup */
+    mg.current.connect(rCG.current);rCG.current.connect(cDel);cDel.connect(mx.current);
+    cDN.current=cDel;
     rC.current=[];
     try{var mt='audio/webm;codecs=opus';if(!MediaRecorder.isTypeSupported(mt)){mt='audio/webm';if(!MediaRecorder.isTypeSupported(mt))mt=''}
-      var opts=mt?{mimeType:mt}:undefined;var m=new MediaRecorder(mx.current.stream,opts);_recMime=m.mimeType||mt||'audio/webm';m.ondataavailable=function(e){if(e.data.size>0)rC.current.push(e.data)};m.start(100);mr.current=m}catch(e){console.error('MediaRecorder failed:',e);sME('Recording not supported on this browser')}
-    ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;isRRef.current=true;sR(true)
+      var opts=mt?{mimeType:mt,audioBitsPerSecond:128000}:{};var m=new MediaRecorder(mx.current.stream,opts);_recMime=m.mimeType||mt||'audio/webm';m.ondataavailable=function(e){if(e.data.size>0)rC.current.push(e.data)};m.start(100);mr.current=m}catch(e){console.error('MediaRecorder failed:',e);sME('Recording not supported on this browser')}
+    ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;isRRef.current=true;sR(true);
+    /* Boost ONLY oG (speaker output) to compensate for Android/iOS volume ducking.
+       Do NOT boost mg — recording taps from mg, so mg must stay at normal level.
+       oG is downstream of where recording taps, so this only affects speakers. */
+    if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(4.0*cf.current._lBst,ac.current.currentTime,.02);
+    /* Try setSinkId to keep audio on media device (Chrome 110+, fights Android HFP switch) */
+    try{if(ac.current.setSinkId){navigator.mediaDevices.enumerateDevices().then(function(devs){
+      var media=devs.filter(function(d){return d.kind==='audiooutput'&&d.deviceId!=='communications'});
+      if(media.length>0)ac.current.setSinkId(media[0].deviceId).catch(function(){})})}}catch(e){}
   }).catch(function(e){sME('Mic access denied. Check permissions.');console.error(e)})}
 
   function spR(){isRRef.current=false;sR(false);
+    /* Restore normal oG (was boosted for live output during recording) */
+    if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(4.0,ac.current.currentTime,.02);
     // Stop MediaRecorder FIRST while AC is still running
     var mrRef=mr.current;mr.current=null;
     if(mrRef&&mrRef.state!=='inactive'){try{mrRef.stop()}catch(e){}}
-    // Disconnect recording chain: oG → delay → gain → mix dest
-    if(oG.current&&cDN.current){try{oG.current.disconnect(cDN.current)}catch(e){}}
+    // Disconnect recording chain: mg → rCG → delay → mx
+    if(mg.current&&rCG.current){try{mg.current.disconnect(rCG.current)}catch(e){}}
+    if(rCG.current){try{rCG.current.disconnect()}catch(e){};rCG.current=null}
     if(cDN.current){try{cDN.current.disconnect()}catch(e){}cDN.current=null}
     if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;wd.current=new Uint8Array(0);
     // Build blob after short delay for final data chunk
@@ -897,9 +919,10 @@ function App(){
         h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Shift vibration earlier (-) or later (+) to sync with audio')),
       h('div',{style:CD},
         h('div',{style:LB},'RECORDING MIX'),
-        h(LSl,{label:'CLICK LEVEL',value:rcV,onChange:sRcV,min:0,max:1,step:.05,display:Math.round(rcV*100)+'%'}),
-        h(LSl,{label:'MIC LEVEL',value:rmV,onChange:sRmV,min:0,max:1,step:.05,display:Math.round(rmV*100)+'%',last:true}),
-        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Balance click vs mic volume in recordings')),
+        h(LSl,{label:'CLICK IN RECORDING',value:rcV,onChange:sRcV,min:0,max:1,step:.05,display:Math.round(rcV*100)+'%'}),
+        h(LSl,{label:'MIC IN RECORDING',value:rmV,onChange:sRmV,min:0,max:1,step:.05,display:Math.round(rmV*100)+'%'}),
+        h(LSl,{label:'LIVE BOOST (WHILE REC)',value:lBst,onChange:sLBst,min:1,max:4,step:.25,display:lBst+'x',last:true}),
+        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Live Boost compensates for phone volume ducking when mic is active')),
       h('div',{style:CD},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('div',{style:LB},'SPEED TRAINER'),h('button',{onClick:function(){sTO(!tO)},style:TG(tO)},h('div',{style:TK(tO)}))),
         tO&&h('div',{style:{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
