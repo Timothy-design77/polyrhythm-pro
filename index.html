@@ -175,6 +175,7 @@ function TSC(p){
 
 var _justRec=false; /* module-level flag: skip IDB load right after recording (not a hook) */
 var _recMime=''; /* actual MIME type used by MediaRecorder */
+var oG={current:null}; /* output gain node ref (module-level to preserve hook order) */
 /* MAIN APP */
 function App(){
   /* --- v10 state (all preserved) --- */
@@ -327,7 +328,7 @@ function App(){
   var meter=um(function(){var n=tsN+'/'+tsD;if(tsD===8&&tsG.length>1)n=tsN+'/'+tsD+' ('+tsG.join('+')+')';return{n:n,num:tsN,den:tsD,grp:tsG}},[tsN,tsD,tsG]);
   var gs=gS(meter,sub),cE=trks[eT]||trks[0];
 
-  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol,_vbI:vbI,_vbD:vbD,_rcV:rcV,_rmV:rmV};if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(vol*(isRRef.current?16.0:8.0),ac.current.currentTime,.05)},[bpm,meter,sub,trks,vol,vbI,vbD,rcV,rmV]);
+  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol,_vbI:vbI,_vbD:vbD,_rcV:rcV,_rmV:rmV};if(mg.current&&ac.current){mg.current.gain.setTargetAtTime(vol*(isRRef.current?24.0:8.0),ac.current.currentTime,.05);if(oG.current)oG.current.gain.setTargetAtTime(isRRef.current?10.0:4.0,ac.current.currentTime,.05)}},[bpm,meter,sub,trks,vol,vbI,vbD,rcV,rmV]);
   ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
     /* Load presets - migrate old ones without IDs */
     var rawP=LS.g('pp10p')||[];var mp=rawP.map(function(p,i){if(p.id)return p;return Object.assign({},p,{id:'pm'+i+'_'+Date.now().toString(36),projectId:null})});
@@ -352,7 +353,7 @@ function App(){
     sTr(function(tr){return tr.map(function(t,i){if(i>0)return t;return Object.assign({},t,{beats:gs2,accents:ac2})})});if(pl)tgPl()}
   function chS(s){sSu(s);var gs2=gS(meter,s),ac2=dAcc(meter,s);sTr(function(tr){return tr.map(function(t,i){if(i>0)return t;return Object.assign({},t,{beats:gs2,accents:ac2})})});if(pl)tgPl()}
 
-  function iAC(){if(!ac.current||ac.current.state==='closed'){ac.current=new(window.AudioContext||window.webkitAudioContext)();co.current=ac.current.createDynamicsCompressor();co.current.threshold.value=0;co.current.knee.value=3;co.current.ratio.value=2;co.current.attack.value=.002;co.current.release.value=.05;var outG=ac.current.createGain();outG.gain.value=4.0;co.current.connect(outG);outG.connect(ac.current.destination);mg.current=ac.current.createGain();mg.current.connect(co.current);mg.current.gain.value=cf.current.vol*8.0;gNB(ac.current)}}
+  function iAC(){if(!ac.current||ac.current.state==='closed'){ac.current=new(window.AudioContext||window.webkitAudioContext)();co.current=ac.current.createDynamicsCompressor();co.current.threshold.value=0;co.current.knee.value=3;co.current.ratio.value=2;co.current.attack.value=.002;co.current.release.value=.05;oG.current=ac.current.createGain();oG.current.gain.value=4.0;co.current.connect(oG.current);oG.current.connect(ac.current.destination);mg.current=ac.current.createGain();mg.current.connect(co.current);mg.current.gain.value=cf.current.vol*8.0;gNB(ac.current)}}
 
   var nxN=uc(function(tid){var c=cf.current,t=c.tracks.find(function(t){return t.id===tid});if(!t)return;var md=mDur(c.meter,c.bpm),d=md/t.beats;if(t.swing>0)d=cb2.current[tid]%2===0?md/t.beats*(1+t.swing*.5):md/t.beats*(1-t.swing*.5);nn.current[tid]+=d;var nb=(cb2.current[tid]+1)%t.beats;cb2.current[tid]=nb;if(tid===c.tracks[0].id&&nb===0){mc.current++;ms.current=nn.current[tid]}},[]);
   var scN=uc(function(tid,bn,time){var c=cf.current,t=c.tracks.find(function(t){return t.id===tid});if(!t)return;if(ci2.current&&tid!==c.tracks[0].id)return;var al=t.accents[bn];
@@ -442,13 +443,18 @@ function App(){
     try{var mt='audio/webm;codecs=opus';if(!MediaRecorder.isTypeSupported(mt)){mt='audio/webm';if(!MediaRecorder.isTypeSupported(mt))mt=''}
       var opts=mt?{mimeType:mt}:undefined;var m=new MediaRecorder(mx.current.stream,opts);_recMime=m.mimeType||mt||'audio/webm';m.ondataavailable=function(e){if(e.data.size>0)rC.current.push(e.data)};m.start(100);mr.current=m}catch(e){console.error('MediaRecorder failed:',e);sME('Recording not supported on this browser')}
     ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;isRRef.current=true;sR(true);
-    /* OS ducks speaker volume when mic is active — compensate by boosting master gain */
-    if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(cf.current.vol*16.0,ac.current.currentTime,.02)
+    /* Tell OS we want full speaker volume during recording */
+    try{if(navigator.audioSession)navigator.audioSession.type='play-and-record'}catch(e){}
+    /* OS aggressively ducks speaker when mic is active — boost BOTH master and output gain to compensate */
+    if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(cf.current.vol*24.0,ac.current.currentTime,.01);
+    if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(10.0,ac.current.currentTime,.01)
   }).catch(function(e){sME('Mic access denied. Check permissions.');console.error(e)})}
 
   function spR(){isRRef.current=false;sR(false);
-    /* Restore normal master gain (was boosted to compensate for OS mic ducking) */
+    /* Restore normal gains (were boosted to compensate for OS mic ducking) */
     if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(cf.current.vol*8.0,ac.current.currentTime,.02);
+    if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(4.0,ac.current.currentTime,.02);
+    try{if(navigator.audioSession)navigator.audioSession.type='playback'}catch(e){}
     // Stop MediaRecorder FIRST while AC is still running
     var mrRef=mr.current;mr.current=null;
     if(mrRef&&mrRef.state!=='inactive'){try{mrRef.stop()}catch(e){}}
