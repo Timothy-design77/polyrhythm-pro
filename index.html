@@ -323,7 +323,7 @@ function App(){
   var meter=um(function(){var n=tsN+'/'+tsD;if(tsD===8&&tsG.length>1)n=tsN+'/'+tsD+' ('+tsG.join('+')+')';return{n:n,num:tsN,den:tsD,grp:tsG}},[tsN,tsD,tsG]);
   var gs=gS(meter,sub),cE=trks[eT]||trks[0];
 
-  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol};if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(vol*4.0,ac.current.currentTime,.05)},[bpm,meter,sub,trks,vol]);
+  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol};if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(vol*8.0,ac.current.currentTime,.05)},[bpm,meter,sub,trks,vol]);
   ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
     /* Load presets - migrate old ones without IDs */
     var rawP=LS.g('pp10p')||[];var mp=rawP.map(function(p,i){if(p.id)return p;return Object.assign({},p,{id:'pm'+i+'_'+Date.now().toString(36),projectId:null})});
@@ -348,7 +348,7 @@ function App(){
     sTr(function(tr){return tr.map(function(t,i){if(i>0)return t;return Object.assign({},t,{beats:gs2,accents:ac2})})});if(pl)tgPl()}
   function chS(s){sSu(s);var gs2=gS(meter,s),ac2=dAcc(meter,s);sTr(function(tr){return tr.map(function(t,i){if(i>0)return t;return Object.assign({},t,{beats:gs2,accents:ac2})})});if(pl)tgPl()}
 
-  function iAC(){if(!ac.current||ac.current.state==='closed'){ac.current=new(window.AudioContext||window.webkitAudioContext)();co.current=ac.current.createDynamicsCompressor();co.current.threshold.value=-3;co.current.knee.value=6;co.current.ratio.value=3;co.current.attack.value=.002;co.current.release.value=.05;var outG=ac.current.createGain();outG.gain.value=2.5;co.current.connect(outG);outG.connect(ac.current.destination);mg.current=ac.current.createGain();mg.current.connect(co.current);mg.current.gain.value=cf.current.vol*4.0;gNB(ac.current)}}
+  function iAC(){if(!ac.current||ac.current.state==='closed'){ac.current=new(window.AudioContext||window.webkitAudioContext)();co.current=ac.current.createDynamicsCompressor();co.current.threshold.value=0;co.current.knee.value=3;co.current.ratio.value=2;co.current.attack.value=.002;co.current.release.value=.05;var outG=ac.current.createGain();outG.gain.value=4.0;co.current.connect(outG);outG.connect(ac.current.destination);mg.current=ac.current.createGain();mg.current.connect(co.current);mg.current.gain.value=cf.current.vol*8.0;gNB(ac.current)}}
 
   var nxN=uc(function(tid){var c=cf.current,t=c.tracks.find(function(t){return t.id===tid});if(!t)return;var md=mDur(c.meter,c.bpm),d=md/t.beats;if(t.swing>0)d=cb2.current[tid]%2===0?md/t.beats*(1+t.swing*.5):md/t.beats*(1-t.swing*.5);nn.current[tid]+=d;var nb=(cb2.current[tid]+1)%t.beats;cb2.current[tid]=nb;if(tid===c.tracks[0].id&&nb===0){mc.current++;ms.current=nn.current[tid]}},[]);
   var scN=uc(function(tid,bn,time){var c=cf.current,t=c.tracks.find(function(t){return t.id===tid});if(!t)return;if(ci2.current&&tid!==c.tracks[0].id)return;var al=t.accents[bn];
@@ -429,8 +429,8 @@ function App(){
     /* Delay click path to align with mic input latency in recording */
     var cDel=ac.current.createDelay(0.5);
     cDel.delayTime.value=Math.max(0.005,rDl/1000);
-    /* Boost click to match live output chain (compressor+2.5x outGain) */
-    var cBst=ac.current.createGain();cBst.gain.value=3.0;
+    /* Boost click to match live output chain (compressor+4x outGain) */
+    var cBst=ac.current.createGain();cBst.gain.value=5.0;
     if(mg.current){mg.current.connect(cDel);cDel.connect(cBst);cBst.connect(mx.current)}
     cDN.current=cDel; /* store ref for cleanup */
     rC.current=[];
@@ -505,7 +505,7 @@ function App(){
   function svP(){if(!pN.trim())return;var pid='p'+Date.now().toString(36);sSP(function(p){return p.concat([{id:pid,name:pN.trim(),bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks.slice(),projectId:actPj||null}])});sPN('');
     if(actPj){sProjs(function(pjs){return pjs.map(function(pj){if(pj.id!==actPj)return pj;return Object.assign({},pj,{presetIds:(pj.presetIds||[]).concat([pid])})})})}}
   function ldP(pr){sB(pr.bpm);if(pr.tsNum){sTN(pr.tsNum);sTD(pr.tsDen);sTG(pr.tsGrp)}if(pr.sub)sSu(pr.sub);if(pr.vol!==undefined)sV(pr.vol);sTr(pr.tracks.map(function(t){return Object.assign({},t,{id:Math.random().toString(36).substr(2,9)})}));sPO(pr.tracks.length>1);if(pl)tgPl();if(pr.projectId)sActPj(pr.projectId)}
-  function pvS(sid){iAC();if(ac.current.state==='suspended')ac.current.resume();var tg=ac.current.createGain();tg.connect(co.current||ac.current.destination);tg.gain.value=vol*4;var rs=rSid(sid);if(SE[rs])SE[rs](ac.current,ac.current.currentTime+.01,true,1.2,tg)}
+  function pvS(sid){iAC();if(ac.current.state==='suspended')ac.current.resume();var tg=ac.current.createGain();tg.connect(co.current||ac.current.destination);tg.gain.value=vol*8;var rs=rSid(sid);if(SE[rs])SE[rs](ac.current,ac.current.currentTime+.01,true,1.2,tg)}
   function pbA(){if(!rU)return;if(pA.current){pA.current.pause();pA.current=null;sPB(false);return}var au=new Audio(rU);au.volume=pbVol;au.onended=function(){sPB(false);pA.current=null};au.onerror=function(){sPB(false);pA.current=null;sME('Playback failed')};
     var pp=au.play();if(pp&&pp.catch)pp.catch(function(e){sPB(false);pA.current=null;console.error('Playback err:',e)});pA.current=au;sPB(true)}
   function chPbVol(v){sPbVol(v);if(pA.current)pA.current.volume=v}
