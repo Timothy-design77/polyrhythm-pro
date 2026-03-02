@@ -236,6 +236,10 @@ function App(){
   var _obd=us(false),obD=_obd[0],sObD=_obd[1]; // onboarding dismissed
   var _rdl=us(40),rDl=_rdl[0],sRDl=_rdl[1]; // recording sync delay (ms)
   var _pbv=us(1),pbVol=_pbv[0],sPbVol=_pbv[1]; // playback volume
+  var _vbI=us(1),vbI=_vbI[0],sVbI=_vbI[1]; // vibration intensity 0-1
+  var _vbD=us(0),vbD=_vbD[0],sVbD=_vbD[1]; // vibration delay offset ms
+  var _rcV=us(1),rcV=_rcV[0],sRcV=_rcV[1]; // recording click volume 0-1
+  var _rmV=us(.8),rmV=_rmV[0],sRmV=_rmV[1]; // recording mic volume 0-1
   var ttRef=ur(null); // tap tempo reset timer
 
   function tapTempo(){var now=Date.now();var taps=tTaps.concat([now]).filter(function(t){return now-t<3000}).slice(-8);
@@ -253,7 +257,7 @@ function App(){
     var data={version:2,exported:new Date().toISOString(),settings:LS.g('pp10'),presets:sP,sessions:ses,profiles:prfs,projects:projs,setlists:setlists,activeProject:actPj};
     var bl=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});var u=URL.createObjectURL(bl);var a=document.createElement('a');a.href=u;a.download='polyrhythm-pro-backup-'+new Date().toISOString().slice(0,10)+'.json';a.click();URL.revokeObjectURL(u)}
   function importData(e){var f=e.target.files[0];if(!f)return;var r=new FileReader();r.onload=function(ev){try{var data=JSON.parse(ev.target.result);
-    if(data.settings){var d=data.settings;if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel)}
+    if(data.settings){var d=data.settings;if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV)}
     if(data.presets)sSP(data.presets);if(data.sessions)sSs(data.sessions);if(data.profiles)sPf(data.profiles);
     if(data.projects)sProjs(data.projects);if(data.setlists)sSls(data.setlists);if(data.activeProject)sActPj(data.activeProject);
     alert('Imported '+((data.sessions||[]).length)+' sessions, '+((data.presets||[]).length)+' presets, '+((data.projects||[]).length)+' projects')}catch(err){alert('Invalid backup file')}};r.readAsText(f)}
@@ -323,8 +327,8 @@ function App(){
   var meter=um(function(){var n=tsN+'/'+tsD;if(tsD===8&&tsG.length>1)n=tsN+'/'+tsD+' ('+tsG.join('+')+')';return{n:n,num:tsN,den:tsD,grp:tsG}},[tsN,tsD,tsG]);
   var gs=gS(meter,sub),cE=trks[eT]||trks[0];
 
-  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol};if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(vol*8.0,ac.current.currentTime,.05)},[bpm,meter,sub,trks,vol]);
-  ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
+  ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol,_vbI:vbI,_vbD:vbD,_rcV:rcV,_rmV:rmV};if(mg.current&&ac.current)mg.current.gain.setTargetAtTime(vol*8.0,ac.current.currentTime,.05)},[bpm,meter,sub,trks,vol,vbI,vbD,rcV,rmV]);
+  ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
     /* Load presets - migrate old ones without IDs */
     var rawP=LS.g('pp10p')||[];var mp=rawP.map(function(p,i){if(p.id)return p;return Object.assign({},p,{id:'pm'+i+'_'+Date.now().toString(36),projectId:null})});
     sSP(mp);
@@ -336,7 +340,7 @@ function App(){
     sProjs(LS.g('pp2_projects')||[]);sActPj(LS.g('pp2_actpj')||null);
     sSls(LS.g('pp2_setlists')||[]);sObD(LS.g('pp2_onboard')||false);
     sLd(true)},[]);
-  ue(function(){if(ld)LS.s('pp10',{bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks,sens:sns,latOff:lO,recDel:rDl,polyOn:poO})},[bpm,tsN,tsD,tsG,sub,vol,trks,sns,lO,rDl,poO,ld]);
+  ue(function(){if(ld)LS.s('pp10',{bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks,sens:sns,latOff:lO,recDel:rDl,polyOn:poO,vbI:vbI,vbD:vbD,rcV:rcV,rmV:rmV})},[bpm,tsN,tsD,tsG,sub,vol,trks,sns,lO,rDl,poO,vbI,vbD,rcV,rmV,ld]);
   ue(function(){if(ld)LS.s('pp10p',sP)},[sP,ld]);ue(function(){if(ld)LS.s('pp10s',ses.slice(-50))},[ses,ld]);ue(function(){if(ld)LS.s('pp10prof',prfs)},[prfs,ld]);
   ue(function(){if(ld)LS.s('pp2_projects',projs)},[projs,ld]);
   ue(function(){if(ld)LS.s('pp2_actpj',actPj)},[actPj,ld]);
@@ -352,7 +356,8 @@ function App(){
 
   var nxN=uc(function(tid){var c=cf.current,t=c.tracks.find(function(t){return t.id===tid});if(!t)return;var md=mDur(c.meter,c.bpm),d=md/t.beats;if(t.swing>0)d=cb2.current[tid]%2===0?md/t.beats*(1+t.swing*.5):md/t.beats*(1-t.swing*.5);nn.current[tid]+=d;var nb=(cb2.current[tid]+1)%t.beats;cb2.current[tid]=nb;if(tid===c.tracks[0].id&&nb===0){mc.current++;ms.current=nn.current[tid]}},[]);
   var scN=uc(function(tid,bn,time){var c=cf.current,t=c.tracks.find(function(t){return t.id===tid});if(!t)return;if(ci2.current&&tid!==c.tracks[0].id)return;var al=t.accents[bn];
-    if(al>0&&!t.muted&&ac.current&&mg.current){var ia=al>=2,sid=rSid(ia?t.accentSound:t.normalSound),v=ia?t.accentVolume*Math.min(al/2,1):t.normalVolume*(al===0?.2:al>=1?1:.6);if(SE[sid])SE[sid](ac.current,time,ia,v,mg.current);if(tid===c.tracks[0].id&&navigator.vibrate)navigator.vibrate(al>=3?50:al>=2?30:bn===0?20:10)}
+    if(al>0&&!t.muted&&ac.current&&mg.current){var ia=al>=2,sid=rSid(ia?t.accentSound:t.normalSound),v=ia?t.accentVolume*Math.min(al/2,1):t.normalVolume*(al===0?.2:al>=1?1:.6);if(SE[sid])SE[sid](ac.current,time,ia,v,mg.current);
+      if(tid===c.tracks[0].id&&navigator.vibrate&&c._vbI>0){var baseDur=al>=3?50:al>=2?30:bn===0?20:10;var dur=Math.round(baseDur*c._vbI);var delay=Math.max(0,(time-ac.current.currentTime)*1000+c._vbD);setTimeout(function(){navigator.vibrate(dur)},delay)}}
     if(al>0){sb.current.push({tid:tid,beat:bn,time:time,acc:al});if(sb.current.length>500)sb.current=sb.current.slice(-250)}vq.current.push({tid:tid,bn:bn,time:time})},[]);
   var sch=uc(function(){if(!ac.current)return;var ct=ac.current.currentTime,c=cf.current;
     if(tO&&mc.current!==lt2.current){if(mc.current>0&&mc.current%(tB2||4)===0){var nb=tb.current+(tP||5);if(nb<=tE){tb.current=nb;cf.current=Object.assign({},cf.current,{bpm:nb});sB(nb)}}lt2.current=mc.current}
@@ -425,12 +430,12 @@ function App(){
   function stR(){sME('');navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(stream){
     mi.current=stream;an.current=ac.current.createAnalyser();an.current.fftSize=4096;an.current.smoothingTimeConstant=0.3;
     mS.current=ac.current.createMediaStreamSource(stream);mS.current.connect(an.current);
-    mx.current=ac.current.createMediaStreamDestination();var mG=ac.current.createGain();mG.gain.value=3;mS.current.connect(mG);mG.connect(mx.current);
+    mx.current=ac.current.createMediaStreamDestination();var mG=ac.current.createGain();mG.gain.value=cf.current._rmV*6;mS.current.connect(mG);mG.connect(mx.current);
     /* Delay click path to align with mic input latency in recording */
     var cDel=ac.current.createDelay(0.5);
     cDel.delayTime.value=Math.max(0.005,rDl/1000);
-    /* Boost click to match live output chain (compressor+4x outGain) */
-    var cBst=ac.current.createGain();cBst.gain.value=5.0;
+    /* Boost click - route through compressor replica to match live output */
+    var cBst=ac.current.createGain();cBst.gain.value=cf.current._rcV*8;
     if(mg.current){mg.current.connect(cDel);cDel.connect(cBst);cBst.connect(mx.current)}
     cDN.current=cDel; /* store ref for cleanup */
     rC.current=[];
@@ -886,6 +891,16 @@ function App(){
         h(LSl,{label:'LATENCY OFFSET',value:lO,onChange:sLO,min:0,max:100,step:5,display:lO+'ms'}),
         h(LSl,{label:'RECORDING SYNC',value:rDl,onChange:sRDl,min:0,max:150,step:5,display:rDl+'ms',last:true}),
         h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Adjust if click and instrument are misaligned in recordings')),
+      h('div',{style:CD},
+        h('div',{style:LB},'VIBRATION'),
+        h(LSl,{label:'INTENSITY',value:vbI,onChange:sVbI,min:0,max:2,step:.1,display:vbI===0?'Off':Math.round(vbI*100)+'%'}),
+        h(LSl,{label:'DELAY OFFSET',value:vbD,onChange:sVbD,min:-50,max:50,step:5,display:(vbD>0?'+':'')+vbD+'ms',last:true}),
+        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Shift vibration earlier (-) or later (+) to sync with audio')),
+      h('div',{style:CD},
+        h('div',{style:LB},'RECORDING MIX'),
+        h(LSl,{label:'CLICK LEVEL',value:rcV,onChange:sRcV,min:0,max:1,step:.05,display:Math.round(rcV*100)+'%'}),
+        h(LSl,{label:'MIC LEVEL',value:rmV,onChange:sRmV,min:0,max:1,step:.05,display:Math.round(rmV*100)+'%',last:true}),
+        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Balance click vs mic volume in recordings')),
       h('div',{style:CD},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('div',{style:LB},'SPEED TRAINER'),h('button',{onClick:function(){sTO(!tO)},style:TG(tO)},h('div',{style:TK(tO)}))),
         tO&&h('div',{style:{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
