@@ -235,6 +235,7 @@ function App(){
   var _ttaps=us([]),tTaps=_ttaps[0],sTTaps=_ttaps[1]; // tap tempo timestamps
   var _obd=us(false),obD=_obd[0],sObD=_obd[1]; // onboarding dismissed
   var _rdl=us(40),rDl=_rdl[0],sRDl=_rdl[1]; // recording sync delay (ms)
+  var _pbv=us(1),pbVol=_pbv[0],sPbVol=_pbv[1]; // playback volume
   var ttRef=ur(null); // tap tempo reset timer
 
   function tapTempo(){var now=Date.now();var taps=tTaps.concat([now]).filter(function(t){return now-t<3000}).slice(-8);
@@ -428,7 +429,9 @@ function App(){
     /* Delay click path to align with mic input latency in recording */
     var cDel=ac.current.createDelay(0.5);
     cDel.delayTime.value=Math.max(0.005,rDl/1000);
-    if(mg.current){mg.current.connect(cDel);cDel.connect(mx.current)}
+    /* Boost click to match live output chain (compressor+2.5x outGain) */
+    var cBst=ac.current.createGain();cBst.gain.value=3.0;
+    if(mg.current){mg.current.connect(cDel);cDel.connect(cBst);cBst.connect(mx.current)}
     cDN.current=cDel; /* store ref for cleanup */
     rC.current=[];
     try{var mt='audio/webm;codecs=opus';if(!MediaRecorder.isTypeSupported(mt)){mt='audio/webm';if(!MediaRecorder.isTypeSupported(mt))mt=''}
@@ -503,8 +506,9 @@ function App(){
     if(actPj){sProjs(function(pjs){return pjs.map(function(pj){if(pj.id!==actPj)return pj;return Object.assign({},pj,{presetIds:(pj.presetIds||[]).concat([pid])})})})}}
   function ldP(pr){sB(pr.bpm);if(pr.tsNum){sTN(pr.tsNum);sTD(pr.tsDen);sTG(pr.tsGrp)}if(pr.sub)sSu(pr.sub);if(pr.vol!==undefined)sV(pr.vol);sTr(pr.tracks.map(function(t){return Object.assign({},t,{id:Math.random().toString(36).substr(2,9)})}));sPO(pr.tracks.length>1);if(pl)tgPl();if(pr.projectId)sActPj(pr.projectId)}
   function pvS(sid){iAC();if(ac.current.state==='suspended')ac.current.resume();var tg=ac.current.createGain();tg.connect(co.current||ac.current.destination);tg.gain.value=vol*4;var rs=rSid(sid);if(SE[rs])SE[rs](ac.current,ac.current.currentTime+.01,true,1.2,tg)}
-  function pbA(){if(!rU)return;if(pA.current){pA.current.pause();pA.current=null;sPB(false);return}var au=new Audio(rU);au.onended=function(){sPB(false);pA.current=null};au.onerror=function(){sPB(false);pA.current=null;sME('Playback failed')};
+  function pbA(){if(!rU)return;if(pA.current){pA.current.pause();pA.current=null;sPB(false);return}var au=new Audio(rU);au.volume=pbVol;au.onended=function(){sPB(false);pA.current=null};au.onerror=function(){sPB(false);pA.current=null;sME('Playback failed')};
     var pp=au.play();if(pp&&pp.catch)pp.catch(function(e){sPB(false);pA.current=null;console.error('Playback err:',e)});pA.current=au;sPB(true)}
+  function chPbVol(v){sPbVol(v);if(pA.current)pA.current.volume=v}
 
   /* Load recording from IndexedDB when viewing a session */
   var prevSId=ur(null);
@@ -778,9 +782,11 @@ function App(){
               h('div',{style:Object.assign({},LB,{display:'flex',justifyContent:'space-between'})},h('span',null,'RECORDING'),
                 rU&&h('a',{href:rU,download:'session-'+cS.id+(_recMime.indexOf('mp4')>=0?'.m4a':'.webm'),style:{fontSize:10,color:'#555',textDecoration:'none'}},'\u2B07 Download')),
               rU?h('div',{style:{display:'flex',gap:8,alignItems:'center'}},
-                h('button',{onClick:pbA,style:{width:44,height:44,borderRadius:'50%',background:pB?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.06)',border:'1px solid #222',display:'flex',alignItems:'center',justifyContent:'center'}},
+                h('button',{onClick:pbA,style:{width:44,height:44,borderRadius:'50%',background:pB?'rgba(255,255,255,0.1)':'rgba(255,255,255,0.06)',border:'1px solid #222',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}},
                   pB?h('div',{style:{width:10,height:10,borderRadius:1,background:'#ccc'}}):h('div',{style:{width:0,height:0,borderStyle:'solid',borderWidth:'7px 0 7px 12px',borderColor:'transparent transparent transparent #ccc',marginLeft:2}})),
-                h('div',{style:{flex:1,height:2,background:'#1a1a1a',borderRadius:1}})):
+                h('div',{style:{flex:1,display:'flex',alignItems:'center',gap:6}},
+                  h('div',{style:{fontSize:9,color:'#555',flexShrink:0}},'\uD83D\uDD0A'),
+                  h('input',{type:'range',min:0,max:1,step:0.05,value:pbVol,onChange:function(e){chPbVol(parseFloat(e.target.value))},style:{flex:1,height:4,accentColor:'#555',cursor:'pointer'}}))):
               h('div',{style:{fontSize:10,color:'#555',padding:8,textAlign:'center'}},'Recording stored locally \u2014 loading...')),
             /* Distribution */
             h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},h('div',{style:LB},'DISTRIBUTION'),h('canvas',{ref:hC,style:{width:'100%',height:100,display:'block'}})),
