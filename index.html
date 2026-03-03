@@ -431,20 +431,37 @@ function App(){
   ue(function(){af.current=requestAnimationFrame(uV);return function(){cancelAnimationFrame(af.current)}},[uV]);
 
   /* RECORDING - MIX MIC+CLICK */
-  /* Architecture: recording taps from mg (BEFORE compressor/oG) with normalizing gain.
-     Speaker output goes through compressor → oG as normal.
-     mg.gain = vol*8, so mg output peaks ~6-8. We divide by ~7 (×0.15) to normalize to ±1.0.
-     Mic gain is LOW — phone mic drums are loud, we don't want clipping. */
-  function stR(){sME('');navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}}).then(function(stream){
+  /* Strategy: Force built-in phone mic via deviceId to avoid Bluetooth HFP switch.
+     When getUserMedia requests the BT mic, Android switches BT from A2DP (music, full vol)
+     to HFP (communication, low vol). By explicitly selecting the built-in mic, we avoid
+     triggering HFP — BT earbuds stay on A2DP at full volume for click playback. */
+  function stR(){sME('');
+    /* Step 1: Find built-in mic (avoid BT mic which triggers HFP) */
+    var getMic=navigator.mediaDevices.enumerateDevices().then(function(devs){
+      var inputs=devs.filter(function(d){return d.kind==='audioinput'});
+      /* Find built-in: labels typically contain 'built-in', 'phone', 'bottom', 'camcorder',
+         or lack 'bluetooth'/'wireless'/'airpod'/'galaxy buds'. On first call labels may be
+         empty — fall back to non-default device or just use default. */
+      var builtin=inputs.find(function(d){
+        var lb=d.label.toLowerCase();
+        return lb&&(lb.indexOf('built')>=0||lb.indexOf('phone')>=0||lb.indexOf('bottom')>=0||lb.indexOf('camcorder')>=0)});
+      if(!builtin)builtin=inputs.find(function(d){
+        var lb=d.label.toLowerCase();
+        return lb&&lb.indexOf('bluetooth')<0&&lb.indexOf('wireless')<0&&lb.indexOf('airpod')<0&&lb.indexOf('buds')<0&&lb.indexOf('headset')<0&&d.deviceId!=='default'&&d.deviceId!=='communications'});
+      return builtin?builtin.deviceId:null;
+    }).catch(function(){return null});
+    /* Step 2: Request mic with selected deviceId */
+    getMic.then(function(micId){
+      var constraints={audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}};
+      if(micId)constraints.audio.deviceId={exact:micId};
+      return navigator.mediaDevices.getUserMedia(constraints);
+    }).then(function(stream){
     mi.current=stream;an.current=ac.current.createAnalyser();an.current.fftSize=4096;an.current.smoothingTimeConstant=0.3;
     mS.current=ac.current.createMediaStreamSource(stream);mS.current.connect(an.current);
     mx.current=ac.current.createMediaStreamDestination();
-    /* Mic path: low gain to prevent clipping. Drums are LOUD to a phone mic.
-       At rmV=0.5 (default), gain=0.5. Mic peaks of 0.3 → 0.15 in recording. */
+    /* Mic path: low gain to prevent clipping. Drums are LOUD to a phone mic. */
     var mG=ac.current.createGain();mG.gain.value=cf.current._rmV;mS.current.connect(mG);mG.connect(mx.current);
-    /* Click path: mg → rCG(normalize) → delay → mx
-       At vol=0.8: mg=6.4, ×0.15=0.96. At vol=1.0: mg=8, ×0.15=1.2 (mild soft clip, ok).
-       rcV slider scales: at rcV=0.7 (default), 0.7×0.15=0.105, signal=6.4×0.105=0.67 */
+    /* Click path: mg → rCG(normalize) → delay → mx */
     rCG.current=ac.current.createGain();rCG.current.gain.value=cf.current._rcV*0.15;
     var cDel=ac.current.createDelay(0.5);
     cDel.delayTime.value=Math.max(0.005,rDl/1000);
@@ -454,14 +471,8 @@ function App(){
     try{var mt='audio/webm;codecs=opus';if(!MediaRecorder.isTypeSupported(mt)){mt='audio/webm';if(!MediaRecorder.isTypeSupported(mt))mt=''}
       var opts=mt?{mimeType:mt,audioBitsPerSecond:128000}:{};var m=new MediaRecorder(mx.current.stream,opts);_recMime=m.mimeType||mt||'audio/webm';m.ondataavailable=function(e){if(e.data.size>0)rC.current.push(e.data)};m.start(100);mr.current=m}catch(e){console.error('MediaRecorder failed:',e);sME('Recording not supported on this browser')}
     ol.current=[];lt.current=0;wB.current=new Uint8Array(WR).fill(128);wP.current=0;isRRef.current=true;sR(true);
-    /* Boost ONLY oG (speaker output) to compensate for Android/iOS volume ducking.
-       Do NOT boost mg — recording taps from mg, so mg must stay at normal level.
-       oG is downstream of where recording taps, so this only affects speakers. */
+    /* Boost oG for live output — recording taps upstream from mg, unaffected */
     if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(4.0*cf.current._lBst,ac.current.currentTime,.02);
-    /* Try setSinkId to keep audio on media device (Chrome 110+, fights Android HFP switch) */
-    try{if(ac.current.setSinkId){navigator.mediaDevices.enumerateDevices().then(function(devs){
-      var media=devs.filter(function(d){return d.kind==='audiooutput'&&d.deviceId!=='communications'});
-      if(media.length>0)ac.current.setSinkId(media[0].deviceId).catch(function(){})})}}catch(e){}
   }).catch(function(e){sME('Mic access denied. Check permissions.');console.error(e)})}
 
   function spR(){isRRef.current=false;sR(false);
