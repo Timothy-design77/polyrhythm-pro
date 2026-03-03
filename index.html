@@ -1049,11 +1049,13 @@ function App(){
   )}
 ReactDOM.render(React.createElement(App),document.getElementById('root'));
 if('serviceWorker' in navigator){
-  /* Force clear stale caches from old SW versions */
-  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v3')caches.delete(k)})});
+  /* Force clear ALL old caches and re-register SW */
+  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-19')caches.delete(k)})});
   navigator.serviceWorker.getRegistrations().then(function(regs){
-    regs.forEach(function(r){r.update()});
-    if(regs.length===0)navigator.serviceWorker.register('sw.js').catch(function(){});
+    /* Unregister old SWs then register fresh */
+    Promise.all(regs.map(function(r){return r.unregister()})).then(function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
   }).catch(function(){navigator.serviceWorker.register('sw.js').catch(function(){})})
 }
 </script></body></html>
