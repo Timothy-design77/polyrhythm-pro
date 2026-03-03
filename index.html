@@ -255,17 +255,31 @@ function App(){
   var _prScW=us(20),prScW=_prScW[0],sPrScW=_prScW[1]; // post-rec scoring window
   var _prAcT=us(3),prAcT=_prAcT[0],sPrAcT=_prAcT[1]; // post-rec accent threshold
   var _prFmW=us(15),prFmW=_prFmW[0],sPrFmW=_prFmW[1]; // post-rec flam window
+  var _prSub=us(null),prSub=_prSub[0],sPrSub=_prSub[1]; // post-rec subdivision override (null=use session's)
 
   /* Re-analyze raw onsets with different parameters */
-  function reanalyze(raw,pScW,pAcT,pFmW,pSns){
+  function reanalyze(raw,pScW,pAcT,pFmW,pSns,newBeats,origBeats,mDurMs){
     if(!raw||!raw.length)return null;
-    /* Re-merge flams from raw onsets */
     var merged=[];
     for(var i=0;i<raw.length;i++){
       var o=raw[i],last=merged.length>0?merged[merged.length-1]:null;
       if(last&&Math.abs(o.time-last.time)<pFmW/1000){
-        if(o.peak>last.peak){last.time=o.time;last.delta=o.delta;last.peak=o.peak}
-      }else{merged.push({time:o.time,delta:o.delta,peak:o.peak})}
+        if(o.peak>last.peak){last.time=o.time;last.delta=o.delta;last.peak=o.peak;last.mpos=o.mpos}
+      }else{merged.push({time:o.time,delta:o.delta,peak:o.peak,mpos:o.mpos})}
+    }
+    /* If subdivision changed and mpos available, recompute deltas against new beat grid */
+    if(newBeats&&newBeats!==origBeats&&mDurMs){
+      for(var j=0;j<merged.length;j++){
+        var m2=merged[j];if(m2.mpos===undefined)continue;
+        var nd2=Infinity;
+        for(var b=0;b<newBeats;b++){
+          var bp=b/newBeats,d2=m2.mpos-bp;
+          if(d2>0.5)d2-=1;if(d2<-0.5)d2+=1;
+          if(Math.abs(d2)<Math.abs(nd2))nd2=d2;
+        }
+        /* Convert measure-fraction to ms */
+        m2.delta=nd2*mDurMs;
+      }
     }
     /* Re-score with new window and threshold */
     var fi=merged.filter(function(o){return Math.abs(o.delta)<=pScW&&o.peak>=pSns*pAcT});
@@ -456,18 +470,18 @@ function App(){
     var pk=0;for(var i=0;i<d.length;i++){var a=Math.abs(d[i]-128)/128;if(a>pk)pk=a}
     /* Cooldown 15ms — short enough to catch both flam strokes before merging */
     if(pk>sns&&now-lt.current>.015){lt.current=now;var adj=now-lO/1000,nd=Infinity;
+      /* Compute onset's position within measure for post-rec subdivision re-analysis */
+      var adjEl=((adj-ms.current)%md+md)%md,adjPos=adjEl/md;
       for(var j=0;j<sb.current.length;j++){var s2=sb.current[j],d2=(adj-s2.time)*1000;if(Math.abs(d2)<Math.abs(nd))nd=d2}
       if(Math.abs(nd)<200){
-        /* FLAM DETECTION: if last onset was within fmW ms, merge — keep the louder hit */
         var lastOn=ol.current.length>0?ol.current[ol.current.length-1]:null;
         var isFlam=lastOn&&Math.abs(adj-lastOn.time)<fmW/1000;
         if(isFlam){
-          if(pk>lastOn.peak){lastOn.time=adj;lastOn.delta=nd;lastOn.peak=pk;
+          if(pk>lastOn.peak){lastOn.time=adj;lastOn.delta=nd;lastOn.peak=pk;lastOn.mpos=adjPos;
             lastOn.scored=Math.abs(nd)<=scW&&pk>=sns*acT}
         }else{
-          /* SCORING: only scored if within ±scW ms of beat AND loud enough (acT× sensitivity) */
           var scored=Math.abs(nd)<=scW&&pk>=sns*acT;
-          var on={time:adj,delta:nd,peak:pk,scored:scored,instrument:null,spectral:null};
+          var on={time:adj,delta:nd,peak:pk,scored:scored,mpos:adjPos,instrument:null,spectral:null};
           if(aPf&&a2.frequencyBinCount>=128){on.spectral=cSpec(a2);var sm=cSim(on.spectral,aPf.spectral);on.instrument=sm>.6?aPf.name:null;on.similarity=sm}
           ol.current.push(on);calCollect(nd)}}}
     if(cM&&pk>sns&&now-lt.current<.01&&a2.frequencyBinCount>=128)sCH(function(p){return p.concat([cSpec(a2)])})},[sns,lO,aPf,cM,fmW,scW,acT]);
@@ -596,8 +610,8 @@ function App(){
     var pf=ds.length>0?ds.filter(function(d){return Math.abs(d)<=10}).length:0;
     var gd=ds.length>0?ds.filter(function(d){return Math.abs(d)<=25}).length:0;
     /* Save ALL raw onsets (with peak, delta, scored flag) for post-recording re-analysis */
-    var rawOn=on.map(function(o){return{time:o.time,delta:o.delta,peak:o.peak,scored:o.scored}}).slice(0,800);
-    var ss={id:ssId,date:new Date().toISOString(),bpm:cf.current.bpm,meter:cf.current.meter.n,sub:cf.current.sub,instrument:aPf?aPf.name:null,projectId:actPj||null,hasRecording:chunks.length>0,
+    var rawOn=on.map(function(o){return{time:o.time,delta:o.delta,peak:o.peak,scored:o.scored,mpos:o.mpos}}).slice(0,800);
+    var ss={id:ssId,date:new Date().toISOString(),bpm:cf.current.bpm,meter:cf.current.meter.n,sub:cf.current.sub,nBeats:cf.current.tracks[0]?cf.current.tracks[0].beats:cf.current.meter.num,instrument:aPf?aPf.name:null,projectId:actPj||null,hasRecording:chunks.length>0,
       totalHits:fi.length,allHits:on.length,avgDelta:Math.round(av*10)/10,avgAbsDelta:Math.round(aa*10)/10,stdDev:Math.round(sd*10)/10,
       perfectPct:Math.round(pf/Math.max(fi.length,1)*100),goodPct:Math.round(gd/Math.max(fi.length,1)*100),onsets:fi.slice(0,300),rawOnsets:rawOn,
       detFmW:fmW,detScW:scW,detAcT:acT,detSns:sns};
@@ -658,13 +672,22 @@ function App(){
 
   /* Initialize post-rec params from session's detection settings */
   ue(function(){if(!cS)return;
-    sPrScW(cS.detScW||scW);sPrAcT(cS.detAcT||acT);sPrFmW(cS.detFmW||fmW)},[cS?cS.id:null]);
+    sPrScW(cS.detScW||scW);sPrAcT(cS.detAcT||acT);sPrFmW(cS.detFmW||fmW);sPrSub(null)},[cS?cS.id:null]);
 
   /* Re-analyze with current post-rec params */
   var prA=um(function(){if(!cS)return null;
     var raw=cS.rawOnsets||cS.onsets;if(!raw||!raw.length)return null;
     var pSns=cS.detSns||sns;
-    return reanalyze(raw,prScW,prAcT,prFmW,pSns)},[cS,prScW,prAcT,prFmW]);
+    var origBeats=cS.nBeats||4;
+    /* Effective subdivision: prSub overrides session's sub. Sub values are numeric multipliers (1,2,3,4,6) */
+    var effSub=prSub||cS.sub||1;
+    var mNum=typeof cS.meter==='string'?parseInt(cS.meter):cS.meter||4;
+    var newBeats=mNum*effSub;
+    /* Measure duration in ms */
+    var mDurMs=(60/cS.bpm)*mNum*1000;
+    /* Deep copy raw to avoid mutating saved data */
+    var rawCopy=raw.map(function(o){return{time:o.time,delta:o.delta,peak:o.peak,mpos:o.mpos,scored:o.scored}});
+    return reanalyze(rawCopy,prScW,prAcT,prFmW,pSns,newBeats,origBeats,mDurMs)},[cS,prScW,prAcT,prFmW,prSub]);
   /* Effective stats: use re-analyzed if available, else session defaults */
   var eS=prA||cS||{};
 
@@ -943,9 +966,15 @@ function App(){
             /* POST-RECORDING FILTERS */
             (cS.rawOnsets||cS.onsets)&&h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},
               h('div',{style:LB},'DETECTION FILTERS'),
-              h(LSl,{label:'SCORING WINDOW',value:prScW,onChange:sPrScW,min:3,max:80,step:1,display:'\u00B1'+prScW+'ms'}),
+              h('div',{style:{marginBottom:10}},
+                h('div',{style:{fontSize:9,fontWeight:700,color:'#555',letterSpacing:1,marginBottom:6}},'ANALYSIS SUBDIVISION'),
+                h('div',{style:{display:'flex',gap:4,flexWrap:'wrap'}},
+                  [{id:null,n:'Original'+(cS.sub?' ('+({1:'None',2:'8ths',3:'Trips',4:'16ths',6:'6ths'}[cS.sub]||cS.sub)+')':'')},{id:1,n:'None'},{id:2,n:'8ths'},{id:3,n:'Trips'},{id:4,n:'16ths'},{id:6,n:'6ths'}].map(function(s){
+                    var sel=prSub===s.id;
+                    return h('button',{key:s.id||'orig',onClick:function(){sPrSub(s.id)},style:{padding:'5px 10px',borderRadius:8,fontSize:10,fontWeight:600,background:sel?'rgba(255,255,255,0.08)':'#141414',border:'1px solid '+(sel?'rgba(255,255,255,0.2)':'#1a1a1a'),color:sel?'#ccc':'#555',fontFamily:'inherit'}},s.n)}))),
+              h(LSl,{label:'SCORING WINDOW',value:prScW,onChange:sPrScW,min:1,max:80,step:1,display:'\u00B1'+prScW+'ms'}),
               h(LSl,{label:'ACCENT THRESHOLD',value:prAcT,onChange:sPrAcT,min:1,max:8,step:.1,display:prAcT+'x'}),
-              h(LSl,{label:'FLAM WINDOW',value:prFmW,onChange:sPrFmW,min:2,max:60,step:1,display:prFmW+'ms',last:true}),
+              h(LSl,{label:'FLAM WINDOW',value:prFmW,onChange:sPrFmW,min:1,max:60,step:1,display:prFmW+'ms',last:true}),
               h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Drag sliders \u2014 stats + charts update live. Raise accent to kill ghost notes. Tighten scoring to see real errors. '+(cS.rawOnsets?'':'Old session \u2014 limited re-analysis.'))),
             /* Distribution */
             h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},h('div',{style:LB},'DISTRIBUTION'),h('canvas',{ref:hC,style:{width:'100%',height:100,display:'block'}})),
@@ -1056,8 +1085,8 @@ function App(){
         h(LSl,{label:'MIC SENSITIVITY',value:sns,onChange:sSn,min:.05,max:.5,step:.01,display:Math.round(sns*100)+'%',last:true})),
       h('div',{style:CD},
         h('div',{style:LB},'DETECTION'),
-        h(LSl,{label:'FLAM WINDOW',value:fmW,onChange:sFmW,min:2,max:60,step:1,display:fmW+'ms'}),
-        h(LSl,{label:'SCORING WINDOW',value:scW,onChange:sScW,min:3,max:80,step:1,display:'\u00B1'+scW+'ms'}),
+        h(LSl,{label:'FLAM WINDOW',value:fmW,onChange:sFmW,min:1,max:60,step:1,display:fmW+'ms'}),
+        h(LSl,{label:'SCORING WINDOW',value:scW,onChange:sScW,min:1,max:80,step:1,display:'\u00B1'+scW+'ms'}),
         h(LSl,{label:'ACCENT THRESHOLD',value:acT,onChange:sAcT,min:1,max:8,step:.1,display:acT+'x',last:true}),
         h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Tighten scoring window + raise accent threshold to filter ghost notes. Lower flam window for tight flams only.')),
       h('div',{style:CD},
@@ -1129,7 +1158,7 @@ function App(){
 ReactDOM.render(React.createElement(App),document.getElementById('root'));
 if('serviceWorker' in navigator){
   /* Force clear ALL old caches and re-register SW */
-  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-24')caches.delete(k)})});
+  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-25')caches.delete(k)})});
   navigator.serviceWorker.getRegistrations().then(function(regs){
     /* Unregister old SWs then register fresh */
     Promise.all(regs.map(function(r){return r.unregister()})).then(function(){
