@@ -244,7 +244,9 @@ function App(){
   var _rmV=us(.5),rmV=_rmV[0],sRmV=_rmV[1]; // recording mic volume 0-1
   var _lbst=us(2),lBst=_lbst[0],sLBst=_lbst[1]; // live boost during recording 1-4x
   var _cal=us(null),calSt=_cal[0],sCalSt=_cal[1]; // calibration state: null|'active'|{result,hits}
+  var calRef=ur(null); // ref mirror of calSt for use in animation loop
   var calH=ur([]); // calibration hit deltas
+  var _calC=us(0),calCnt=_calC[0],sCalCnt=_calC[1]; // cal hit count for UI
   var DEFS={vol:.8,sns:.15,lO:0,rDl:40,vbI:1,vbD:0,rcV:.7,rmV:.5,lBst:2,pbVol:1}; // system defaults
   var ttRef=ur(null); // tap tempo reset timer
 
@@ -257,7 +259,7 @@ function App(){
   /* DELAY CALIBRATION - tap along with click, measure system latency */
   var calStartedPl=ur(false); // did calibration start the metronome?
   var calMic=ur(null); // calibration mic stream
-  function startCal(){calH.current=[];sCalSt('active');
+  function startCal(){calH.current=[];calRef.current='active';sCalCnt(0);sCalSt('active');
     /* Start metronome if not running */
     calStartedPl.current=!pl;if(!pl)tgPl();
     /* Open mic for onset detection — use built-in mic to avoid BT HFP switch */
@@ -273,16 +275,16 @@ function App(){
       calMic.current=stream;
       an.current=ac.current.createAnalyser();an.current.fftSize=4096;an.current.smoothingTimeConstant=0.3;
       mS.current=ac.current.createMediaStreamSource(stream);mS.current.connect(an.current);
-    }).catch(function(e){console.error('Cal mic error:',e);sCalSt(null)})}
+    }).catch(function(e){console.error('Cal mic error:',e);calRef.current=null;sCalSt(null)})}
   function stopCalMic(){
     if(calMic.current){calMic.current.getTracks().forEach(function(t){t.stop()});calMic.current=null}
     if(mS.current){try{mS.current.disconnect()}catch(e){};mS.current=null}an.current=null;
     if(calStartedPl.current&&pl){tgPl();calStartedPl.current=false}}
-  function cancelCal(){stopCalMic();sCalSt(null);calH.current=[]}
-  function applyCal(v){stopCalMic();sLO(v);sCalSt(null);calH.current=[]}
+  function cancelCal(){stopCalMic();calRef.current=null;sCalSt(null);sCalCnt(0);calH.current=[]}
+  function applyCal(v){stopCalMic();calRef.current=null;sLO(v);sCalSt(null);sCalCnt(0);calH.current=[]}
   /* Called from dO when calibrating — collect delta for each onset */
-  function calCollect(delta){if(calSt!=='active')return;
-    calH.current.push(delta);
+  function calCollect(delta){if(calRef.current!=='active')return;
+    calH.current.push(delta);sCalCnt(calH.current.length);
     if(calH.current.length>=12){
       /* Compute median (outlier-resistant) */
       var sorted=calH.current.slice().sort(function(a,b){return a-b});
@@ -425,7 +427,7 @@ function App(){
       for(var j=0;j<sb.current.length;j++){var s2=sb.current[j],d2=(adj-s2.time)*1000;if(Math.abs(d2)<Math.abs(nd))nd=d2}
       if(Math.abs(nd)<200){var on={time:adj,delta:nd,peak:pk,instrument:null,spectral:null};
         if(aPf&&a2.frequencyBinCount>=128){on.spectral=cSpec(a2);var sm=cSim(on.spectral,aPf.spectral);on.instrument=sm>.6?aPf.name:null;on.similarity=sm}ol.current.push(on);calCollect(nd)}}
-    if(cM&&pk>sns&&now-lt.current<.01&&a2.frequencyBinCount>=128)sCH(function(p){return p.concat([cSpec(a2)])})},[sns,lO,aPf,cM,calSt]);
+    if(cM&&pk>sns&&now-lt.current<.01&&a2.frequencyBinCount>=128)sCH(function(p){return p.concat([cSpec(a2)])})},[sns,lO,aPf,cM]);
 
   /* DIAL VIS */
   var dV=uc(function(){var c2=cv.current;if(!c2)return;var ctx=c2.getContext('2d'),dpr=window.devicePixelRatio||1,r=c2.getBoundingClientRect(),rw=Math.round(r.width),rh=Math.round(r.height);
@@ -473,8 +475,8 @@ function App(){
       if(o.instrument&&op>.3){ctx.font='600 8px -apple-system,sans-serif';ctx.fillStyle='rgba(255,255,255,'+op*.5+')';ctx.textAlign='center';ctx.fillText(o.instrument.slice(0,4),ox,mid-9)}}},[]);
 
   var uV=uc(function(){if(ac.current){var ct=ac.current.currentTime,u=false,na=Object.assign({},aB);
-      while(vq.current.length>0&&vq.current[0].time<ct-.2)vq.current.shift();while(vq.current.length>0&&vq.current[0].time<=ct){var ev=vq.current.shift();na[ev.tid]=ev.bn;u=true}if(u)sAB(na);if(isRRef.current||calSt==='active')dO()}
-    dV();dW();af.current=requestAnimationFrame(uV)},[aB,dV,dW,dO,calSt]);
+      while(vq.current.length>0&&vq.current[0].time<ct-.2)vq.current.shift();while(vq.current.length>0&&vq.current[0].time<=ct){var ev=vq.current.shift();na[ev.tid]=ev.bn;u=true}if(u)sAB(na);if(isRRef.current||calRef.current==='active')dO()}
+    dV();dW();af.current=requestAnimationFrame(uV)},[aB,dV,dW,dO]);
   ue(function(){af.current=requestAnimationFrame(uV);return function(){cancelAnimationFrame(af.current)}},[uV]);
 
   /* RECORDING - MIX MIC+CLICK */
@@ -984,9 +986,9 @@ function App(){
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
             h('span',{style:{fontSize:11,fontWeight:700,color:'rgba(200,255,200,0.7)'}},'CALIBRATING...'),
             h('button',{onClick:cancelCal,style:{fontSize:10,color:'#666',background:'none',border:'none',padding:'4px 8px'}},'\u2715 Cancel')),
-          h('div',{style:{fontSize:12,color:'#888',marginBottom:6}},'Tap along with the click \u2014 '+calH.current.length+'/12 hits'),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:6}},'Tap along with the click \u2014 '+calCnt+'/12 hits'),
           h('div',{style:{height:6,borderRadius:3,background:'#1a1a1a',overflow:'hidden'}},
-            h('div',{style:{width:Math.min(100,Math.round(calH.current.length/12*100))+'%',height:'100%',borderRadius:3,background:'rgba(200,255,200,0.4)',transition:'width 0.2s'}}))):
+            h('div',{style:{width:Math.min(100,Math.round(calCnt/12*100))+'%',height:'100%',borderRadius:3,background:'rgba(200,255,200,0.4)',transition:'width 0.2s'}}))):
         calSt&&calSt.result!==undefined?h('div',{style:{marginTop:12,padding:14,borderRadius:12,background:'rgba(200,255,200,0.03)',border:'1px solid rgba(200,255,200,0.1)'}},
           h('div',{style:{fontSize:11,fontWeight:700,color:'rgba(200,255,200,0.7)',marginBottom:8}},'CALIBRATION COMPLETE'),
           h('div',{style:{fontSize:12,color:'#888',marginBottom:4}},'Detected latency: '+calSt.median+'ms \u2192 offset: '+calSt.result+'ms'),
@@ -1001,6 +1003,8 @@ function App(){
         h(LSl,{label:'INTENSITY',value:vbI,onChange:sVbI,min:0,max:2,step:.1,display:vbI===0?'Off':Math.round(vbI*100)+'%'}),
         h(LSl,{label:'DELAY OFFSET',value:vbD,onChange:sVbD,min:-50,max:50,step:5,display:(vbD>0?'+':'')+vbD+'ms',last:true}),
         h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Shift vibration earlier (-) or later (+) to sync with audio')),
+      h('div',{style:{textAlign:'center',padding:'8px 0 16px'}},
+        h('button',{onClick:function(){if(confirm('Reset all volume, timing, and recording settings to defaults?'))restoreDefs()},style:{padding:'12px 28px',borderRadius:10,background:'#1a1212',border:'1px solid rgba(255,100,100,0.25)',color:'rgba(255,130,130,0.7)',fontSize:11,fontWeight:700,letterSpacing:1}},'\u21BA RESTORE DEFAULTS')),
       h('div',{style:CD},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('div',{style:LB},'SPEED TRAINER'),h('button',{onClick:function(){sTO(!tO)},style:TG(tO)},h('div',{style:TK(tO)}))),
         tO&&h('div',{style:{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
@@ -1030,8 +1034,6 @@ function App(){
         h('div',{style:{display:'flex',gap:8}},
           h('button',{onClick:exportData,style:{flex:1,padding:'10px',borderRadius:10,background:'#141414',border:'1px solid #1a1a1a',color:'#666',fontSize:10,fontWeight:700}},'\u2B07 EXPORT BACKUP'),
           h('label',{style:{flex:1,padding:'10px',borderRadius:10,background:'#141414',border:'1px solid #1a1a1a',color:'#666',fontSize:10,fontWeight:700,textAlign:'center',cursor:'pointer'}},'\u2B06 IMPORT',h('input',{type:'file',accept:'.json',onChange:importData,style:{display:'none'}}))))
-      ,h('div',{style:{textAlign:'center',padding:'16px 0 4px'}},
-        h('button',{onClick:function(){if(confirm('Reset all volume, timing, and recording settings to defaults?'))restoreDefs()},style:{padding:'12px 28px',borderRadius:10,background:'#1a1212',border:'1px solid rgba(255,100,100,0.2)',color:'rgba(255,130,130,0.7)',fontSize:11,fontWeight:700,letterSpacing:1}},'\u21BA RESTORE DEFAULTS'))
       ,h('div',{style:{textAlign:'center',padding:'8px 0 20px',fontSize:10,color:'#444'}},'Polyrhythm Pro v11 \u00B7 '+ses.length+' sessions \u00B7 '+projs.length+' projects'+(streak>0?' \u00B7 '+streak+' day streak':''))
     ,/* ONBOARDING OVERLAY */
     !obD&&h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:200,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:32}},
