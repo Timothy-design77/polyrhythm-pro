@@ -1,4 +1,4 @@
-var CACHE='polypro-v11-26';
+var CACHE='polypro-v12-0';
 var CDN_URLS=[
   'https://unpkg.com/react@18/umd/react.production.min.js',
   'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
