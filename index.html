@@ -356,7 +356,7 @@ function App(){
       if(cDN.current){try{cDN.current.disconnect()}catch(e){}cDN.current=null}
       if(oG.current&&ac.current)oG.current.gain.setTargetAtTime(4.0,ac.current.currentTime,.02);
       if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;
-      var on=ol.current.slice(),fi=aPf?on.filter(function(o){return o.instrument}):on;
+      var on=ol.current.slice(),fi=on.filter(function(o){return o.scored&&(!aPf||o.instrument)});
       if(fi.length>0){var ds=fi.map(function(o){return o.delta}),av=ds.reduce(function(a,b){return a+b},0)/ds.length,gd=ds.filter(function(d){return Math.abs(d)<=25}).length;
         var sr={step:runSi,name:runSl.steps[runSi].presetName||'Step '+(runSi+1),bpm:cf.current.bpm,hits:fi.length,goodPct:Math.round(gd/Math.max(fi.length,1)*100)};
         sRunSes(function(p){return p.concat([sr])})}}
@@ -424,10 +424,25 @@ function App(){
     var ti=Math.floor(pos*WR),pi=wP.current;if(ti<pi-WR/2){wB.current=new Uint8Array(WR).fill(128);pi=0}
     var cnt=ti-pi;if(cnt>0)for(var w=0;w<cnt;w++){var si=Math.floor(w/cnt*d.length);wB.current[pi+w]=d[Math.min(si,d.length-1)]}wP.current=ti;
     var pk=0;for(var i=0;i<d.length;i++){var a=Math.abs(d[i]-128)/128;if(a>pk)pk=a}
-    if(pk>sns&&now-lt.current>.05){lt.current=now;var adj=now-lO/1000,nd=Infinity;
+    /* Cooldown 15ms (was 50ms) — short enough to catch both flam strokes.
+       Flam detection below merges them. Rolls/ghosts handled by scoring. */
+    if(pk>sns&&now-lt.current>.015){lt.current=now;var adj=now-lO/1000,nd=Infinity;
       for(var j=0;j<sb.current.length;j++){var s2=sb.current[j],d2=(adj-s2.time)*1000;if(Math.abs(d2)<Math.abs(nd))nd=d2}
-      if(Math.abs(nd)<200){var on={time:adj,delta:nd,peak:pk,instrument:null,spectral:null};
-        if(aPf&&a2.frequencyBinCount>=128){on.spectral=cSpec(a2);var sm=cSim(on.spectral,aPf.spectral);on.instrument=sm>.6?aPf.name:null;on.similarity=sm}ol.current.push(on);calCollect(nd)}}
+      if(Math.abs(nd)<200){
+        /* FLAM DETECTION: if last onset was within 30ms, merge — keep the louder hit */
+        var lastOn=ol.current.length>0?ol.current[ol.current.length-1]:null;
+        var isFlam=lastOn&&Math.abs(adj-lastOn.time)<0.030;
+        if(isFlam){
+          if(pk>lastOn.peak){lastOn.time=adj;lastOn.delta=nd;lastOn.peak=pk;
+            lastOn.scored=Math.abs(nd)<=50&&pk>=sns*2}
+          /* Don't add new onset — this was a flam's second stroke */
+        }else{
+          /* SCORING: only scored if within ±50ms of beat AND loud enough (2× sensitivity).
+             Ghost notes, rolls, and off-beat hits are logged but not scored. */
+          var scored=Math.abs(nd)<=50&&pk>=sns*2;
+          var on={time:adj,delta:nd,peak:pk,scored:scored,instrument:null,spectral:null};
+          if(aPf&&a2.frequencyBinCount>=128){on.spectral=cSpec(a2);var sm=cSim(on.spectral,aPf.spectral);on.instrument=sm>.6?aPf.name:null;on.similarity=sm}
+          ol.current.push(on);calCollect(nd)}}}
     if(cM&&pk>sns&&now-lt.current<.01&&a2.frequencyBinCount>=128)sCH(function(p){return p.concat([cSpec(a2)])})},[sns,lO,aPf,cM]);
 
   /* DIAL VIS */
@@ -448,7 +463,7 @@ function App(){
     ctx.textAlign='center';ctx.textBaseline='middle';var dB2=tO&&pl?tb.current:c.bpm;
     ctx.font='800 '+Math.min(52,W*.14)+'px -apple-system,sans-serif';ctx.fillStyle='#f0f0f0';ctx.fillText(dB2%1===0?dB2:dB2.toFixed(1),cx,cy-6);
     ctx.font='500 9px -apple-system,sans-serif';ctx.fillStyle='#555';ctx.fillText('BPM',cx,cy+14);
-    if(isR){var ht=ol.current.length,fh=aPf?ol.current.filter(function(o){return o.instrument}).length:ht,gp=fh>0?Math.round(ol.current.filter(function(o){return(!aPf||o.instrument)&&Math.abs(o.delta)<=25}).length/Math.max(fh,1)*100):0;
+    if(isR){var ht=ol.current.length,sc=ol.current.filter(function(o){return o.scored&&(!aPf||o.instrument)}),fh=sc.length,gp=fh>0?Math.round(sc.filter(function(o){return Math.abs(o.delta)<=25}).length/Math.max(fh,1)*100):0;
       ctx.font='700 12px -apple-system,sans-serif';ctx.fillStyle='rgba(255,255,255,0.5)';ctx.fillText(gp+'% \u00B7 '+fh+' hits',cx,cy+32);
       if(Math.sin(now*6)>0){ctx.beginPath();ctx.arc(cx-16,cy+48,3,0,Math.PI*2);ctx.fillStyle='#ff4444';ctx.fill()}ctx.font='700 9px -apple-system,sans-serif';ctx.fillStyle='#ff6666';ctx.fillText('REC',cx-2,cy+48)}
     else if(!pl){ctx.font='600 13px -apple-system,sans-serif';ctx.fillStyle='#555';ctx.fillText(c.meter.n,cx,cy+34)}
@@ -472,7 +487,10 @@ function App(){
         ctx.beginPath();ctx.moveTo(tP2[0].x,(tP2[0].y+bP2[0].y)/2);for(var i=1;i<tP2.length;i++)ctx.quadraticCurveTo(tP2[i-1].x+.5,(tP2[i-1].y+bP2[i-1].y)/2,tP2[i].x,(tP2[i].y+bP2[i].y)/2);ctx.strokeStyle='rgba(255,255,255,0.2)';ctx.lineWidth=1.5;ctx.stroke()}}
     ctx.beginPath();ctx.moveTo(px,0);ctx.lineTo(px,H);ctx.strokeStyle='rgba(255,255,255,0.4)';ctx.lineWidth=2;ctx.stroke();
     var rc2=ol.current.slice(-40);for(var k=0;k<rc2.length;k++){var o=rc2[k],age=(now-o.time)*2;if(age>1.5)continue;var oEl=((o.time-ms.current)%md+md)%md,ox=oEl/md*W,ad=Math.abs(o.delta),op=Math.max(0,1-age);
-      ctx.beginPath();ctx.arc(ox,mid,5,0,Math.PI*2);ctx.fillStyle=ad<=10?'rgba(180,255,180,'+op*.7+')':ad<=25?'rgba(255,255,180,'+op*.6+')':'rgba(255,180,180,'+op*.5+')';ctx.fill();
+      if(o.scored){/* Scored hit: colored by accuracy */
+        ctx.beginPath();ctx.arc(ox,mid,5,0,Math.PI*2);ctx.fillStyle=ad<=10?'rgba(180,255,180,'+op*.7+')':ad<=25?'rgba(255,255,180,'+op*.6+')':'rgba(255,180,180,'+op*.5+')';ctx.fill();
+      }else{/* Unscored: ghost note / flam — small dim dot */
+        ctx.beginPath();ctx.arc(ox,mid,2.5,0,Math.PI*2);ctx.fillStyle='rgba(255,255,255,'+op*.15+')';ctx.fill()}
       if(o.instrument&&op>.3){ctx.font='600 8px -apple-system,sans-serif';ctx.fillStyle='rgba(255,255,255,'+op*.5+')';ctx.textAlign='center';ctx.fillText(o.instrument.slice(0,4),ox,mid-9)}}},[]);
 
   var uV=uc(function(){if(ac.current){var ct=ac.current.currentTime,u=false,na=Object.assign({},aB);
@@ -538,7 +556,7 @@ function App(){
     if(mi.current){mi.current.getTracks().forEach(function(t){t.stop()});mi.current=null}an.current=null;mS.current=null;wd.current=new Uint8Array(0);
     // Build blob after short delay for final data chunk
     var chunks=rC.current.slice();var mxNode=mx.current;mx.current=null;
-    var on=ol.current.slice(),fi=aPf?on.filter(function(o){return o.instrument}):on;
+    var on=ol.current.slice(),fi=on.filter(function(o){return o.scored&&(!aPf||o.instrument)});
     var ssId=Date.now().toString(36);
     setTimeout(function(){try{if(chunks.length>0){var bl=new Blob(chunks,{type:_recMime||'audio/webm'});sRU(URL.createObjectURL(bl));
       /* Save recording blob to IndexedDB linked to session */
@@ -1050,7 +1068,7 @@ function App(){
 ReactDOM.render(React.createElement(App),document.getElementById('root'));
 if('serviceWorker' in navigator){
   /* Force clear ALL old caches and re-register SW */
-  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-19')caches.delete(k)})});
+  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-21')caches.delete(k)})});
   navigator.serviceWorker.getRegistrations().then(function(regs){
     /* Unregister old SWs then register fresh */
     Promise.all(regs.map(function(r){return r.unregister()})).then(function(){
