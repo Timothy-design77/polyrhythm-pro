@@ -260,6 +260,8 @@ function App(){
   var calStartedPl=ur(false); // did calibration start the metronome?
   var calMic=ur(null); // calibration mic stream
   function startCal(){calH.current=[];calRef.current='active';sCalCnt(0);sCalSt('active');
+    /* Slow tempo for accuracy */
+    var prevBpm=bpm;calH.current._prevBpm=prevBpm;sB(75);
     /* Start metronome if not running */
     calStartedPl.current=!pl;if(!pl)tgPl();
     /* Open mic for onset detection — use built-in mic to avoid BT HFP switch */
@@ -280,20 +282,19 @@ function App(){
     if(calMic.current){calMic.current.getTracks().forEach(function(t){t.stop()});calMic.current=null}
     if(mS.current){try{mS.current.disconnect()}catch(e){};mS.current=null}an.current=null;
     if(calStartedPl.current&&pl){tgPl();calStartedPl.current=false}}
-  function cancelCal(){stopCalMic();calRef.current=null;sCalSt(null);sCalCnt(0);calH.current=[]}
-  function applyCal(v){stopCalMic();calRef.current=null;sLO(v);sCalSt(null);sCalCnt(0);calH.current=[]}
+  function cancelCal(){stopCalMic();calRef.current=null;sCalSt(null);sCalCnt(0);if(calH.current._prevBpm)sB(calH.current._prevBpm);calH.current=[]}
+  function applyCal(v){var pb=calH.current._prevBpm;stopCalMic();calRef.current=null;sLO(v);sCalSt(null);sCalCnt(0);if(pb)sB(pb);calH.current=[]}
   /* Called from dO when calibrating — collect delta for each onset */
   function calCollect(delta){if(calRef.current!=='active')return;
     calH.current.push(delta);sCalCnt(calH.current.length);
-    if(calH.current.length>=12){
-      /* Compute median (outlier-resistant) */
+    if(calH.current.length>=50){
       var sorted=calH.current.slice().sort(function(a,b){return a-b});
-      /* Trim top/bottom 2 */
-      var trimmed=sorted.slice(2,-2);
+      /* Trim top/bottom 10 */
+      var trimmed=sorted.slice(10,-10);
       var med=trimmed[Math.floor(trimmed.length/2)];
-      /* Round to nearest 5ms */
       var result=Math.round(med/5)*5;
       result=Math.max(0,Math.min(100,result));
+      calRef.current=null;
       sCalSt({result:result,hits:calH.current.length,median:Math.round(med)});
     }
   }
@@ -986,9 +987,9 @@ function App(){
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
             h('span',{style:{fontSize:11,fontWeight:700,color:'rgba(200,255,200,0.7)'}},'CALIBRATING...'),
             h('button',{onClick:cancelCal,style:{fontSize:10,color:'#666',background:'none',border:'none',padding:'4px 8px'}},'\u2715 Cancel')),
-          h('div',{style:{fontSize:12,color:'#888',marginBottom:6}},'Tap along with the click \u2014 '+calCnt+'/12 hits'),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:4}},'Tap along at 75 BPM \u2014 '+calCnt+'/50 hits'),
           h('div',{style:{height:6,borderRadius:3,background:'#1a1a1a',overflow:'hidden'}},
-            h('div',{style:{width:Math.min(100,Math.round(calCnt/12*100))+'%',height:'100%',borderRadius:3,background:'rgba(200,255,200,0.4)',transition:'width 0.2s'}}))):
+            h('div',{style:{width:Math.min(100,Math.round(calCnt/50*100))+'%',height:'100%',borderRadius:3,background:'rgba(200,255,200,0.4)',transition:'width 0.2s'}}))):
         calSt&&calSt.result!==undefined?h('div',{style:{marginTop:12,padding:14,borderRadius:12,background:'rgba(200,255,200,0.03)',border:'1px solid rgba(200,255,200,0.1)'}},
           h('div',{style:{fontSize:11,fontWeight:700,color:'rgba(200,255,200,0.7)',marginBottom:8}},'CALIBRATION COMPLETE'),
           h('div',{style:{fontSize:12,color:'#888',marginBottom:4}},'Detected latency: '+calSt.median+'ms \u2192 offset: '+calSt.result+'ms'),
