@@ -243,6 +243,9 @@ function App(){
   var _rcV=us(.7),rcV=_rcV[0],sRcV=_rcV[1]; // recording click volume 0-1
   var _rmV=us(.5),rmV=_rmV[0],sRmV=_rmV[1]; // recording mic volume 0-1
   var _lbst=us(2),lBst=_lbst[0],sLBst=_lbst[1]; // live boost during recording 1-4x
+  var _cal=us(null),calSt=_cal[0],sCalSt=_cal[1]; // calibration state: null|'active'|{result,hits}
+  var calH=ur([]); // calibration hit deltas
+  var DEFS={vol:.8,sns:.15,lO:0,rDl:40,vbI:1,vbD:0,rcV:.7,rmV:.5,lBst:2,pbVol:1}; // system defaults
   var ttRef=ur(null); // tap tempo reset timer
 
   function tapTempo(){var now=Date.now();var taps=tTaps.concat([now]).filter(function(t){return now-t<3000}).slice(-8);
@@ -250,6 +253,28 @@ function App(){
     if(taps.length>=3){var diffs=[];for(var i=1;i<taps.length;i++)diffs.push(taps[i]-taps[i-1]);
       var avg=diffs.reduce(function(a,b){return a+b},0)/diffs.length;var newBpm=Math.round(60000/avg);
       newBpm=Math.max(20,Math.min(300,newBpm));sB(newBpm)}}
+
+  /* DELAY CALIBRATION - tap along with click, measure system latency */
+  function startCal(){calH.current=[];sCalSt('active');if(!pl)tgPl()}
+  function cancelCal(){sCalSt(null);calH.current=[]}
+  function applyCal(v){sLO(v);sCalSt(null);calH.current=[]}
+  /* Called from dO when calibrating — collect delta for each onset */
+  function calCollect(delta){if(calSt!=='active')return;
+    calH.current.push(delta);
+    if(calH.current.length>=12){
+      /* Compute median (outlier-resistant) */
+      var sorted=calH.current.slice().sort(function(a,b){return a-b});
+      /* Trim top/bottom 2 */
+      var trimmed=sorted.slice(2,-2);
+      var med=trimmed[Math.floor(trimmed.length/2)];
+      /* Round to nearest 5ms */
+      var result=Math.round(med/5)*5;
+      result=Math.max(0,Math.min(100,result));
+      sCalSt({result:result,hits:calH.current.length,median:Math.round(med)});
+    }
+  }
+  /* RESTORE DEFAULTS */
+  function restoreDefs(){sV(DEFS.vol);sSn(DEFS.sns);sLO(DEFS.lO);sRDl(DEFS.rDl);sVbI(DEFS.vbI);sVbD(DEFS.vbD);sRcV(DEFS.rcV);sRmV(DEFS.rmV);sLBst(DEFS.lBst);sPbVol(DEFS.pbVol)}
 
   function getStreak(sessions){if(!sessions.length)return 0;var days={};sessions.forEach(function(s){var d=new Date(s.date).toDateString();days[d]=true});
     var streak=0,d=new Date();for(var i=0;i<365;i++){if(days[d.toDateString()])streak++;else if(i>0)break;d.setDate(d.getDate()-1)}return streak}
@@ -377,8 +402,8 @@ function App(){
     if(pk>sns&&now-lt.current>.05){lt.current=now;var adj=now-lO/1000,nd=Infinity;
       for(var j=0;j<sb.current.length;j++){var s2=sb.current[j],d2=(adj-s2.time)*1000;if(Math.abs(d2)<Math.abs(nd))nd=d2}
       if(Math.abs(nd)<200){var on={time:adj,delta:nd,peak:pk,instrument:null,spectral:null};
-        if(aPf&&a2.frequencyBinCount>=128){on.spectral=cSpec(a2);var sm=cSim(on.spectral,aPf.spectral);on.instrument=sm>.6?aPf.name:null;on.similarity=sm}ol.current.push(on)}}
-    if(cM&&pk>sns&&now-lt.current<.01&&a2.frequencyBinCount>=128)sCH(function(p){return p.concat([cSpec(a2)])})},[sns,lO,aPf,cM]);
+        if(aPf&&a2.frequencyBinCount>=128){on.spectral=cSpec(a2);var sm=cSim(on.spectral,aPf.spectral);on.instrument=sm>.6?aPf.name:null;on.similarity=sm}ol.current.push(on);calCollect(nd)}}
+    if(cM&&pk>sns&&now-lt.current<.01&&a2.frequencyBinCount>=128)sCH(function(p){return p.concat([cSpec(a2)])})},[sns,lO,aPf,cM,calSt]);
 
   /* DIAL VIS */
   var dV=uc(function(){var c2=cv.current;if(!c2)return;var ctx=c2.getContext('2d'),dpr=window.devicePixelRatio||1,r=c2.getBoundingClientRect(),rw=Math.round(r.width),rh=Math.round(r.height);
@@ -918,22 +943,42 @@ function App(){
       h('div',{style:CD},h('div',{style:LB},'SOUND'),
         h('div',{style:{display:'flex',gap:6,flexWrap:'wrap'}},['Clicks','Mallet','Bell','Drum','Cymbal'].map(function(cat){return SND.filter(function(s){return s.c===cat}).map(function(s){var sel=t0&&(t0.normalSound===s.id);return h('button',{key:s.id,onClick:function(){pvS(s.id);sTr(function(tr){return tr.map(function(t,i){if(i>0)return t;return Object.assign({},t,{normalSound:s.id,accentSound:s.id})})})},style:CH(sel)},s.n)})}))),
       h('div',{style:CD},
-        h(LSl,{label:'VOLUME',value:vol,onChange:sV,min:0,max:1,step:.05,display:Math.round(vol*100)+'%'}),
-        h(LSl,{label:'MIC SENSITIVITY',value:sns,onChange:sSn,min:.05,max:.5,step:.01,display:Math.round(sns*100)+'%'}),
-        h(LSl,{label:'LATENCY OFFSET',value:lO,onChange:sLO,min:0,max:100,step:5,display:lO+'ms'}),
+        h('div',{style:LB},'VOLUME'),
+        h(LSl,{label:'CLICK VOLUME',value:vol,onChange:sV,min:0,max:1,step:.05,display:Math.round(vol*100)+'%'}),
+        h(LSl,{label:'PLAYBACK VOLUME',value:pbVol,onChange:sPbVol,min:0,max:1,step:.05,display:Math.round(pbVol*100)+'%',last:true})),
+      h('div',{style:CD},
+        h('div',{style:LB},'RECORDING'),
+        h(LSl,{label:'CLICK IN RECORDING',value:rcV,onChange:sRcV,min:0,max:1,step:.05,display:Math.round(rcV*100)+'%'}),
+        h(LSl,{label:'MIC IN RECORDING',value:rmV,onChange:sRmV,min:0,max:1,step:.05,display:Math.round(rmV*100)+'%'}),
+        h(LSl,{label:'LIVE BOOST (WHILE REC)',value:lBst,onChange:sLBst,min:1,max:4,step:.25,display:lBst+'x'}),
         h(LSl,{label:'RECORDING SYNC',value:rDl,onChange:sRDl,min:0,max:150,step:5,display:rDl+'ms',last:true}),
-        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Adjust if click and instrument are misaligned in recordings')),
+        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Live Boost compensates for phone volume ducking. Recording Sync aligns click+drums in playback.')),
+      h('div',{style:CD},
+        h('div',{style:LB},'TIMING'),
+        h(LSl,{label:'LATENCY OFFSET',value:lO,onChange:sLO,min:0,max:100,step:5,display:lO+'ms'}),
+        h(LSl,{label:'MIC SENSITIVITY',value:sns,onChange:sSn,min:.05,max:.5,step:.01,display:Math.round(sns*100)+'%',last:true}),
+        /* Calibration UI */
+        calSt==='active'?h('div',{style:{marginTop:12,padding:14,borderRadius:12,background:'rgba(200,255,200,0.03)',border:'1px solid rgba(200,255,200,0.1)'}},
+          h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
+            h('span',{style:{fontSize:11,fontWeight:700,color:'rgba(200,255,200,0.7)'}},'CALIBRATING...'),
+            h('button',{onClick:cancelCal,style:{fontSize:10,color:'#666',background:'none',border:'none',padding:'4px 8px'}},'\u2715 Cancel')),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:6}},'Tap along with the click \u2014 '+calH.current.length+'/12 hits'),
+          h('div',{style:{height:6,borderRadius:3,background:'#1a1a1a',overflow:'hidden'}},
+            h('div',{style:{width:Math.min(100,Math.round(calH.current.length/12*100))+'%',height:'100%',borderRadius:3,background:'rgba(200,255,200,0.4)',transition:'width 0.2s'}}))):
+        calSt&&calSt.result!==undefined?h('div',{style:{marginTop:12,padding:14,borderRadius:12,background:'rgba(200,255,200,0.03)',border:'1px solid rgba(200,255,200,0.1)'}},
+          h('div',{style:{fontSize:11,fontWeight:700,color:'rgba(200,255,200,0.7)',marginBottom:8}},'CALIBRATION COMPLETE'),
+          h('div',{style:{fontSize:12,color:'#888',marginBottom:4}},'Detected latency: '+calSt.median+'ms \u2192 offset: '+calSt.result+'ms'),
+          h('div',{style:{fontSize:10,color:'#555',marginBottom:10}},'Based on '+calSt.hits+' taps'),
+          h('div',{style:{display:'flex',gap:8}},
+            h('button',{onClick:function(){applyCal(calSt.result)},style:{flex:1,padding:'10px',borderRadius:10,background:'rgba(200,255,200,0.08)',border:'1px solid rgba(200,255,200,0.2)',color:'rgba(200,255,200,0.8)',fontSize:11,fontWeight:700}},'\u2713 APPLY '+calSt.result+'ms'),
+            h('button',{onClick:cancelCal,style:{padding:'10px 16px',borderRadius:10,background:'#141414',border:'1px solid #1a1a1a',color:'#666',fontSize:11,fontWeight:700}},'DISCARD'))):
+        h('button',{onClick:startCal,style:{marginTop:10,width:'100%',padding:'12px',borderRadius:10,background:'rgba(255,255,255,0.04)',border:'1px solid #222',color:'#777',fontSize:11,fontWeight:700,letterSpacing:1}},'\u23F1 CALIBRATE DELAY'),
+        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Tap along with the click to auto-detect your system latency')),
       h('div',{style:CD},
         h('div',{style:LB},'VIBRATION'),
         h(LSl,{label:'INTENSITY',value:vbI,onChange:sVbI,min:0,max:2,step:.1,display:vbI===0?'Off':Math.round(vbI*100)+'%'}),
         h(LSl,{label:'DELAY OFFSET',value:vbD,onChange:sVbD,min:-50,max:50,step:5,display:(vbD>0?'+':'')+vbD+'ms',last:true}),
         h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Shift vibration earlier (-) or later (+) to sync with audio')),
-      h('div',{style:CD},
-        h('div',{style:LB},'RECORDING MIX'),
-        h(LSl,{label:'CLICK IN RECORDING',value:rcV,onChange:sRcV,min:0,max:1,step:.05,display:Math.round(rcV*100)+'%'}),
-        h(LSl,{label:'MIC IN RECORDING',value:rmV,onChange:sRmV,min:0,max:1,step:.05,display:Math.round(rmV*100)+'%'}),
-        h(LSl,{label:'LIVE BOOST (WHILE REC)',value:lBst,onChange:sLBst,min:1,max:4,step:.25,display:lBst+'x',last:true}),
-        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Live Boost compensates for phone volume ducking when mic is active')),
       h('div',{style:CD},
         h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center'}},h('div',{style:LB},'SPEED TRAINER'),h('button',{onClick:function(){sTO(!tO)},style:TG(tO)},h('div',{style:TK(tO)}))),
         tO&&h('div',{style:{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}},
@@ -963,7 +1008,9 @@ function App(){
         h('div',{style:{display:'flex',gap:8}},
           h('button',{onClick:exportData,style:{flex:1,padding:'10px',borderRadius:10,background:'#141414',border:'1px solid #1a1a1a',color:'#666',fontSize:10,fontWeight:700}},'\u2B07 EXPORT BACKUP'),
           h('label',{style:{flex:1,padding:'10px',borderRadius:10,background:'#141414',border:'1px solid #1a1a1a',color:'#666',fontSize:10,fontWeight:700,textAlign:'center',cursor:'pointer'}},'\u2B06 IMPORT',h('input',{type:'file',accept:'.json',onChange:importData,style:{display:'none'}}))))
-      ,h('div',{style:{textAlign:'center',padding:'12px 0 20px',fontSize:10,color:'#444'}},'Polyrhythm Pro v11 \u00B7 '+ses.length+' sessions \u00B7 '+projs.length+' projects'+(streak>0?' \u00B7 '+streak+' day streak':''))
+      ,h('div',{style:{textAlign:'center',padding:'16px 0 4px'}},
+        h('button',{onClick:function(){if(confirm('Reset all volume, timing, and recording settings to defaults?'))restoreDefs()},style:{padding:'10px 24px',borderRadius:10,background:'rgba(255,200,200,0.04)',border:'1px solid rgba(255,200,200,0.1)',color:'rgba(255,200,200,0.5)',fontSize:10,fontWeight:700,letterSpacing:1}},'\u21BA RESTORE DEFAULTS'))
+      ,h('div',{style:{textAlign:'center',padding:'8px 0 20px',fontSize:10,color:'#444'}},'Polyrhythm Pro v11 \u00B7 '+ses.length+' sessions \u00B7 '+projs.length+' projects'+(streak>0?' \u00B7 '+streak+' day streak':''))
     ,/* ONBOARDING OVERLAY */
     !obD&&h('div',{style:{position:'fixed',inset:0,background:'rgba(0,0,0,0.92)',zIndex:200,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:32}},
       h('div',{style:{fontSize:28,fontWeight:900,color:'#e0e0e0',marginBottom:8}},'Polyrhythm Pro'),
