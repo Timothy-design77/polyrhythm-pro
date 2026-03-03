@@ -243,11 +243,14 @@ function App(){
   var _rcV=us(.7),rcV=_rcV[0],sRcV=_rcV[1]; // recording click volume 0-1
   var _rmV=us(.5),rmV=_rmV[0],sRmV=_rmV[1]; // recording mic volume 0-1
   var _lbst=us(2),lBst=_lbst[0],sLBst=_lbst[1]; // live boost during recording 1-4x
+  var _fmW=us(20),fmW=_fmW[0],sFmW=_fmW[1]; // flam merge window ms (tight: 20)
+  var _scW=us(30),scW=_scW[0],sScW=_scW[1]; // scoring window ±ms (tight: 30)
+  var _acT=us(2.5),acT=_acT[0],sAcT=_acT[1]; // accent threshold multiplier (tight: 2.5x)
   var _cal=us(null),calSt=_cal[0],sCalSt=_cal[1]; // calibration state: null|'active'|{result,hits}
   var calRef=ur(null); // ref mirror of calSt for use in animation loop
   var calH=ur([]); // calibration hit deltas
   var _calC=us(0),calCnt=_calC[0],sCalCnt=_calC[1]; // cal hit count for UI
-  var DEFS={vol:.8,sns:.15,lO:0,rDl:40,vbI:1,vbD:0,rcV:.7,rmV:.5,lBst:2,pbVol:1}; // system defaults
+  var DEFS={vol:.8,sns:.15,lO:0,rDl:40,vbI:1,vbD:0,rcV:.7,rmV:.5,lBst:2,pbVol:1,fmW:20,scW:30,acT:2.5}; // system defaults
   var ttRef=ur(null); // tap tempo reset timer
 
   function tapTempo(){var now=Date.now();var taps=tTaps.concat([now]).filter(function(t){return now-t<3000}).slice(-8);
@@ -299,7 +302,7 @@ function App(){
     }
   }
   /* RESTORE DEFAULTS */
-  function restoreDefs(){sV(DEFS.vol);sSn(DEFS.sns);sLO(DEFS.lO);sRDl(DEFS.rDl);sVbI(DEFS.vbI);sVbD(DEFS.vbD);sRcV(DEFS.rcV);sRmV(DEFS.rmV);sLBst(DEFS.lBst);sPbVol(DEFS.pbVol)}
+  function restoreDefs(){sV(DEFS.vol);sSn(DEFS.sns);sLO(DEFS.lO);sRDl(DEFS.rDl);sVbI(DEFS.vbI);sVbD(DEFS.vbD);sRcV(DEFS.rcV);sRmV(DEFS.rmV);sLBst(DEFS.lBst);sPbVol(DEFS.pbVol);sFmW(DEFS.fmW);sScW(DEFS.scW);sAcT(DEFS.acT)}
 
   function getStreak(sessions){if(!sessions.length)return 0;var days={};sessions.forEach(function(s){var d=new Date(s.date).toDateString();days[d]=true});
     var streak=0,d=new Date();for(var i=0;i<365;i++){if(days[d.toDateString()])streak++;else if(i>0)break;d.setDate(d.getDate()-1)}return streak}
@@ -382,7 +385,7 @@ function App(){
   var gs=gS(meter,sub),cE=trks[eT]||trks[0];
 
   ue(function(){cf.current={bpm:bpm,meter:meter,sub:sub,tracks:trks,vol:vol,_vbI:vbI,_vbD:vbD,_rcV:rcV,_rmV:rmV,_lBst:lBst};if(mg.current&&ac.current){mg.current.gain.setTargetAtTime(vol*8.0,ac.current.currentTime,.05)}if(oG.current&&ac.current){oG.current.gain.setTargetAtTime(isRRef.current?4.0*lBst:4.0,ac.current.currentTime,.05)}},[bpm,meter,sub,trks,vol,vbI,vbD,rcV,rmV,lBst]);
-  ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV);if(d.lBst!==undefined)sLBst(d.lBst);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
+  ue(function(){var d=LS.g('pp10');if(d){if(d.bpm)sB(d.bpm);if(d.vol!==undefined)sV(d.vol);if(d.tsNum)sTN(d.tsNum);if(d.tsDen)sTD(d.tsDen);if(d.tsGrp)sTG(d.tsGrp);if(d.sub)sSu(d.sub);if(d.sens)sSn(d.sens);if(d.latOff!==undefined)sLO(d.latOff);if(d.recDel!==undefined)sRDl(d.recDel);if(d.polyOn)sPO(d.polyOn);if(d.vbI!==undefined)sVbI(d.vbI);if(d.vbD!==undefined)sVbD(d.vbD);if(d.rcV!==undefined)sRcV(d.rcV);if(d.rmV!==undefined)sRmV(d.rmV);if(d.lBst!==undefined)sLBst(d.lBst);if(d.fmW!==undefined)sFmW(d.fmW);if(d.scW!==undefined)sScW(d.scW);if(d.acT!==undefined)sAcT(d.acT);if(d.tracks&&d.tracks.length&&d.tracks.every(function(t){return t&&t.id&&t.beats&&t.accents}))sTr(d.tracks)}
     /* Load presets - migrate old ones without IDs */
     var rawP=LS.g('pp10p')||[];var mp=rawP.map(function(p,i){if(p.id)return p;return Object.assign({},p,{id:'pm'+i+'_'+Date.now().toString(36),projectId:null})});
     sSP(mp);
@@ -394,7 +397,7 @@ function App(){
     sProjs(LS.g('pp2_projects')||[]);sActPj(LS.g('pp2_actpj')||null);
     sSls(LS.g('pp2_setlists')||[]);sObD(LS.g('pp2_onboard')||false);
     sLd(true)},[]);
-  ue(function(){if(ld)LS.s('pp10',{bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks,sens:sns,latOff:lO,recDel:rDl,polyOn:poO,vbI:vbI,vbD:vbD,rcV:rcV,rmV:rmV,lBst:lBst})},[bpm,tsN,tsD,tsG,sub,vol,trks,sns,lO,rDl,poO,vbI,vbD,rcV,rmV,lBst,ld]);
+  ue(function(){if(ld)LS.s('pp10',{bpm:bpm,tsNum:tsN,tsDen:tsD,tsGrp:tsG,sub:sub,vol:vol,tracks:trks,sens:sns,latOff:lO,recDel:rDl,polyOn:poO,vbI:vbI,vbD:vbD,rcV:rcV,rmV:rmV,lBst:lBst,fmW:fmW,scW:scW,acT:acT})},[bpm,tsN,tsD,tsG,sub,vol,trks,sns,lO,rDl,poO,vbI,vbD,rcV,rmV,lBst,fmW,scW,acT,ld]);
   ue(function(){if(ld)LS.s('pp10p',sP)},[sP,ld]);ue(function(){if(ld)LS.s('pp10s',ses.slice(-50))},[ses,ld]);ue(function(){if(ld)LS.s('pp10prof',prfs)},[prfs,ld]);
   ue(function(){if(ld)LS.s('pp2_projects',projs)},[projs,ld]);
   ue(function(){if(ld)LS.s('pp2_actpj',actPj)},[actPj,ld]);
@@ -424,26 +427,23 @@ function App(){
     var ti=Math.floor(pos*WR),pi=wP.current;if(ti<pi-WR/2){wB.current=new Uint8Array(WR).fill(128);pi=0}
     var cnt=ti-pi;if(cnt>0)for(var w=0;w<cnt;w++){var si=Math.floor(w/cnt*d.length);wB.current[pi+w]=d[Math.min(si,d.length-1)]}wP.current=ti;
     var pk=0;for(var i=0;i<d.length;i++){var a=Math.abs(d[i]-128)/128;if(a>pk)pk=a}
-    /* Cooldown 15ms (was 50ms) — short enough to catch both flam strokes.
-       Flam detection below merges them. Rolls/ghosts handled by scoring. */
+    /* Cooldown 15ms — short enough to catch both flam strokes before merging */
     if(pk>sns&&now-lt.current>.015){lt.current=now;var adj=now-lO/1000,nd=Infinity;
       for(var j=0;j<sb.current.length;j++){var s2=sb.current[j],d2=(adj-s2.time)*1000;if(Math.abs(d2)<Math.abs(nd))nd=d2}
       if(Math.abs(nd)<200){
-        /* FLAM DETECTION: if last onset was within 30ms, merge — keep the louder hit */
+        /* FLAM DETECTION: if last onset was within fmW ms, merge — keep the louder hit */
         var lastOn=ol.current.length>0?ol.current[ol.current.length-1]:null;
-        var isFlam=lastOn&&Math.abs(adj-lastOn.time)<0.030;
+        var isFlam=lastOn&&Math.abs(adj-lastOn.time)<fmW/1000;
         if(isFlam){
           if(pk>lastOn.peak){lastOn.time=adj;lastOn.delta=nd;lastOn.peak=pk;
-            lastOn.scored=Math.abs(nd)<=50&&pk>=sns*2}
-          /* Don't add new onset — this was a flam's second stroke */
+            lastOn.scored=Math.abs(nd)<=scW&&pk>=sns*acT}
         }else{
-          /* SCORING: only scored if within ±50ms of beat AND loud enough (2× sensitivity).
-             Ghost notes, rolls, and off-beat hits are logged but not scored. */
-          var scored=Math.abs(nd)<=50&&pk>=sns*2;
+          /* SCORING: only scored if within ±scW ms of beat AND loud enough (acT× sensitivity) */
+          var scored=Math.abs(nd)<=scW&&pk>=sns*acT;
           var on={time:adj,delta:nd,peak:pk,scored:scored,instrument:null,spectral:null};
           if(aPf&&a2.frequencyBinCount>=128){on.spectral=cSpec(a2);var sm=cSim(on.spectral,aPf.spectral);on.instrument=sm>.6?aPf.name:null;on.similarity=sm}
           ol.current.push(on);calCollect(nd)}}}
-    if(cM&&pk>sns&&now-lt.current<.01&&a2.frequencyBinCount>=128)sCH(function(p){return p.concat([cSpec(a2)])})},[sns,lO,aPf,cM]);
+    if(cM&&pk>sns&&now-lt.current<.01&&a2.frequencyBinCount>=128)sCH(function(p){return p.concat([cSpec(a2)])})},[sns,lO,aPf,cM,fmW,scW,acT]);
 
   /* DIAL VIS */
   var dV=uc(function(){var c2=cv.current;if(!c2)return;var ctx=c2.getContext('2d'),dpr=window.devicePixelRatio||1,r=c2.getBoundingClientRect(),rw=Math.round(r.width),rh=Math.round(r.height);
@@ -999,9 +999,16 @@ function App(){
       h('div',{style:CD},
         h('div',{style:LB},'TIMING'),
         h(LSl,{label:'LATENCY OFFSET',value:lO,onChange:sLO,min:0,max:100,step:5,display:lO+'ms'}),
-        h(LSl,{label:'MIC SENSITIVITY',value:sns,onChange:sSn,min:.05,max:.5,step:.01,display:Math.round(sns*100)+'%',last:true}),
-        /* Calibration UI */
-        calSt==='active'?h('div',{style:{marginTop:12,padding:14,borderRadius:12,background:'rgba(200,255,200,0.03)',border:'1px solid rgba(200,255,200,0.1)'}},
+        h(LSl,{label:'MIC SENSITIVITY',value:sns,onChange:sSn,min:.05,max:.5,step:.01,display:Math.round(sns*100)+'%',last:true})),
+      h('div',{style:CD},
+        h('div',{style:LB},'DETECTION'),
+        h(LSl,{label:'FLAM WINDOW',value:fmW,onChange:sFmW,min:5,max:60,step:5,display:fmW+'ms'}),
+        h(LSl,{label:'SCORING WINDOW',value:scW,onChange:sScW,min:15,max:80,step:5,display:'\u00B1'+scW+'ms'}),
+        h(LSl,{label:'ACCENT THRESHOLD',value:acT,onChange:sAcT,min:1,max:5,step:.25,display:acT+'x',last:true}),
+        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Flam: merge hits this close. Scoring: how near a beat to count. Accent: volume multiplier over sensitivity to score.')),
+      h('div',{style:CD},
+        h('div',{style:LB},'CALIBRATION'),
+        calSt==='active'?h('div',{style:{padding:14,borderRadius:12,background:'rgba(200,255,200,0.03)',border:'1px solid rgba(200,255,200,0.1)'}},
           h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}},
             h('span',{style:{fontSize:11,fontWeight:700,color:'rgba(200,255,200,0.7)'}},'CALIBRATING...'),
             h('button',{onClick:cancelCal,style:{fontSize:10,color:'#666',background:'none',border:'none',padding:'4px 8px'}},'\u2715 Cancel')),
@@ -1068,7 +1075,7 @@ function App(){
 ReactDOM.render(React.createElement(App),document.getElementById('root'));
 if('serviceWorker' in navigator){
   /* Force clear ALL old caches and re-register SW */
-  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-21')caches.delete(k)})});
+  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-22')caches.delete(k)})});
   navigator.serviceWorker.getRegistrations().then(function(regs){
     /* Unregister old SWs then register fresh */
     Promise.all(regs.map(function(r){return r.unregister()})).then(function(){
