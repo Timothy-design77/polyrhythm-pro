@@ -243,18 +243,18 @@ function App(){
   var _rcV=us(.7),rcV=_rcV[0],sRcV=_rcV[1]; // recording click volume 0-1
   var _rmV=us(.5),rmV=_rmV[0],sRmV=_rmV[1]; // recording mic volume 0-1
   var _lbst=us(2),lBst=_lbst[0],sLBst=_lbst[1]; // live boost during recording 1-4x
-  var _fmW=us(20),fmW=_fmW[0],sFmW=_fmW[1]; // flam merge window ms (tight: 20)
-  var _scW=us(30),scW=_scW[0],sScW=_scW[1]; // scoring window ±ms (tight: 30)
-  var _acT=us(2.5),acT=_acT[0],sAcT=_acT[1]; // accent threshold multiplier (tight: 2.5x)
+  var _fmW=us(15),fmW=_fmW[0],sFmW=_fmW[1]; // flam merge window ms (tight: 20)
+  var _scW=us(20),scW=_scW[0],sScW=_scW[1]; // scoring window ±ms (tight: 30)
+  var _acT=us(3),acT=_acT[0],sAcT=_acT[1]; // accent threshold multiplier (tight: 2.5x)
   var _cal=us(null),calSt=_cal[0],sCalSt=_cal[1]; // calibration state: null|'active'|{result,hits}
   var calRef=ur(null); // ref mirror of calSt for use in animation loop
   var calH=ur([]); // calibration hit deltas
   var _calC=us(0),calCnt=_calC[0],sCalCnt=_calC[1]; // cal hit count for UI
-  var DEFS={vol:.8,sns:.15,lO:0,rDl:40,vbI:1,vbD:0,rcV:.7,rmV:.5,lBst:2,pbVol:1,fmW:20,scW:30,acT:2.5}; // system defaults
+  var DEFS={vol:.8,sns:.15,lO:0,rDl:40,vbI:1,vbD:0,rcV:.7,rmV:.5,lBst:2,pbVol:1,fmW:15,scW:20,acT:3}; // system defaults
   /* Post-recording re-analysis state */
-  var _prScW=us(30),prScW=_prScW[0],sPrScW=_prScW[1]; // post-rec scoring window
-  var _prAcT=us(2.5),prAcT=_prAcT[0],sPrAcT=_prAcT[1]; // post-rec accent threshold
-  var _prFmW=us(20),prFmW=_prFmW[0],sPrFmW=_prFmW[1]; // post-rec flam window
+  var _prScW=us(20),prScW=_prScW[0],sPrScW=_prScW[1]; // post-rec scoring window
+  var _prAcT=us(3),prAcT=_prAcT[0],sPrAcT=_prAcT[1]; // post-rec accent threshold
+  var _prFmW=us(15),prFmW=_prFmW[0],sPrFmW=_prFmW[1]; // post-rec flam window
 
   /* Re-analyze raw onsets with different parameters */
   function reanalyze(raw,pScW,pAcT,pFmW,pSns){
@@ -925,7 +925,7 @@ function App(){
             /* Stats grid */
             h('div',{style:{display:'grid',gridTemplateColumns:'1fr 1fr 1fr 1fr',gap:8,marginBottom:16}},
               h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:'rgba(200,255,200,0.7)'}},eS.perfectPct+'%'),h('div',{style:{fontSize:9,color:'#555',fontWeight:700,letterSpacing:1}},'PERFECT')),
-              h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:'#666'}},eS.totalHits),h('div',{style:{fontSize:9,color:'#555',fontWeight:700,letterSpacing:1}},'SCORED')),
+              h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:'#666'}},eS.totalHits+(eS.allHits?' / '+eS.allHits:'')),h('div',{style:{fontSize:9,color:'#555',fontWeight:700,letterSpacing:1}},'SCORED')),
               h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:eS.avgDelta>0?'rgba(255,200,200,0.7)':'rgba(200,220,255,0.7)'}},eS.avgDelta>0?'+'+eS.avgDelta:eS.avgDelta),h('div',{style:{fontSize:9,color:'#555',fontWeight:700,letterSpacing:1}},eS.avgDelta>0?'LATE ms':'EARLY ms')),
               h('div',{style:{background:'#111',borderRadius:10,padding:'10px 6px',textAlign:'center'}},h('div',{style:{fontSize:14,fontWeight:800,color:'#666'}},eS.stdDev||0),h('div',{style:{fontSize:9,color:'#555',fontWeight:700,letterSpacing:1}},'STD DEV'))),
             h('div',{style:{textAlign:'center',fontSize:10,color:'#555',marginBottom:14}},cS.bpm+' BPM \u00B7 '+(cS.meter||'4/4')+(cS.instrument?' \u00B7 '+cS.instrument:'')),
@@ -943,10 +943,10 @@ function App(){
             /* POST-RECORDING FILTERS */
             (cS.rawOnsets||cS.onsets)&&h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},
               h('div',{style:LB},'DETECTION FILTERS'),
-              h(LSl,{label:'SCORING WINDOW',value:prScW,onChange:sPrScW,min:15,max:80,step:5,display:'\u00B1'+prScW+'ms'}),
-              h(LSl,{label:'ACCENT THRESHOLD',value:prAcT,onChange:sPrAcT,min:1,max:5,step:.25,display:prAcT+'x'}),
-              h(LSl,{label:'FLAM WINDOW',value:prFmW,onChange:sPrFmW,min:5,max:60,step:5,display:prFmW+'ms',last:true}),
-              h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Adjust and watch accuracy update in real-time. '+(cS.rawOnsets?'':'Old session \u2014 limited re-analysis.'))),
+              h(LSl,{label:'SCORING WINDOW',value:prScW,onChange:sPrScW,min:3,max:80,step:1,display:'\u00B1'+prScW+'ms'}),
+              h(LSl,{label:'ACCENT THRESHOLD',value:prAcT,onChange:sPrAcT,min:1,max:8,step:.1,display:prAcT+'x'}),
+              h(LSl,{label:'FLAM WINDOW',value:prFmW,onChange:sPrFmW,min:2,max:60,step:1,display:prFmW+'ms',last:true}),
+              h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Drag sliders \u2014 stats + charts update live. Raise accent to kill ghost notes. Tighten scoring to see real errors. '+(cS.rawOnsets?'':'Old session \u2014 limited re-analysis.'))),
             /* Distribution */
             h('div',{style:{background:'#111',borderRadius:14,padding:14,marginBottom:12}},h('div',{style:LB},'DISTRIBUTION'),h('canvas',{ref:hC,style:{width:'100%',height:100,display:'block'}})),
             /* Drift */
@@ -1056,10 +1056,10 @@ function App(){
         h(LSl,{label:'MIC SENSITIVITY',value:sns,onChange:sSn,min:.05,max:.5,step:.01,display:Math.round(sns*100)+'%',last:true})),
       h('div',{style:CD},
         h('div',{style:LB},'DETECTION'),
-        h(LSl,{label:'FLAM WINDOW',value:fmW,onChange:sFmW,min:5,max:60,step:5,display:fmW+'ms'}),
-        h(LSl,{label:'SCORING WINDOW',value:scW,onChange:sScW,min:15,max:80,step:5,display:'\u00B1'+scW+'ms'}),
-        h(LSl,{label:'ACCENT THRESHOLD',value:acT,onChange:sAcT,min:1,max:5,step:.25,display:acT+'x',last:true}),
-        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Flam: merge hits this close. Scoring: how near a beat to count. Accent: volume multiplier over sensitivity to score.')),
+        h(LSl,{label:'FLAM WINDOW',value:fmW,onChange:sFmW,min:2,max:60,step:1,display:fmW+'ms'}),
+        h(LSl,{label:'SCORING WINDOW',value:scW,onChange:sScW,min:3,max:80,step:1,display:'\u00B1'+scW+'ms'}),
+        h(LSl,{label:'ACCENT THRESHOLD',value:acT,onChange:sAcT,min:1,max:8,step:.1,display:acT+'x',last:true}),
+        h('div',{style:{fontSize:9,color:'#444',marginTop:4}},'Tighten scoring window + raise accent threshold to filter ghost notes. Lower flam window for tight flams only.')),
       h('div',{style:CD},
         h('div',{style:LB},'CALIBRATION'),
         calSt==='active'?h('div',{style:{padding:14,borderRadius:12,background:'rgba(200,255,200,0.03)',border:'1px solid rgba(200,255,200,0.1)'}},
@@ -1129,7 +1129,7 @@ function App(){
 ReactDOM.render(React.createElement(App),document.getElementById('root'));
 if('serviceWorker' in navigator){
   /* Force clear ALL old caches and re-register SW */
-  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-23')caches.delete(k)})});
+  caches.keys().then(function(keys){keys.forEach(function(k){if(k!=='polypro-v11-24')caches.delete(k)})});
   navigator.serviceWorker.getRegistrations().then(function(regs){
     /* Unregister old SWs then register fresh */
     Promise.all(regs.map(function(r){return r.unregister()})).then(function(){
