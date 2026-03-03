@@ -255,9 +255,31 @@ function App(){
       newBpm=Math.max(20,Math.min(300,newBpm));sB(newBpm)}}
 
   /* DELAY CALIBRATION - tap along with click, measure system latency */
-  function startCal(){calH.current=[];sCalSt('active');if(!pl)tgPl()}
-  function cancelCal(){sCalSt(null);calH.current=[]}
-  function applyCal(v){sLO(v);sCalSt(null);calH.current=[]}
+  var calStartedPl=ur(false); // did calibration start the metronome?
+  var calMic=ur(null); // calibration mic stream
+  function startCal(){calH.current=[];sCalSt('active');
+    /* Start metronome if not running */
+    calStartedPl.current=!pl;if(!pl)tgPl();
+    /* Open mic for onset detection — use built-in mic to avoid BT HFP switch */
+    iAC();
+    navigator.mediaDevices.enumerateDevices().then(function(devs){
+      var inputs=devs.filter(function(d){return d.kind==='audioinput'});
+      var builtin=inputs.find(function(d){var lb=d.label.toLowerCase();return lb&&(lb.indexOf('built')>=0||lb.indexOf('phone')>=0||lb.indexOf('bottom')>=0||lb.indexOf('camcorder')>=0)});
+      if(!builtin)builtin=inputs.find(function(d){var lb=d.label.toLowerCase();return lb&&lb.indexOf('bluetooth')<0&&lb.indexOf('wireless')<0&&lb.indexOf('airpod')<0&&lb.indexOf('buds')<0&&lb.indexOf('headset')<0&&d.deviceId!=='default'&&d.deviceId!=='communications'});
+      var constraints={audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}};
+      if(builtin)constraints.audio.deviceId={exact:builtin.deviceId};
+      return navigator.mediaDevices.getUserMedia(constraints);
+    }).then(function(stream){
+      calMic.current=stream;
+      an.current=ac.current.createAnalyser();an.current.fftSize=4096;an.current.smoothingTimeConstant=0.3;
+      mS.current=ac.current.createMediaStreamSource(stream);mS.current.connect(an.current);
+    }).catch(function(e){console.error('Cal mic error:',e);sCalSt(null)})}
+  function stopCalMic(){
+    if(calMic.current){calMic.current.getTracks().forEach(function(t){t.stop()});calMic.current=null}
+    if(mS.current){try{mS.current.disconnect()}catch(e){};mS.current=null}an.current=null;
+    if(calStartedPl.current&&pl){tgPl();calStartedPl.current=false}}
+  function cancelCal(){stopCalMic();sCalSt(null);calH.current=[]}
+  function applyCal(v){stopCalMic();sLO(v);sCalSt(null);calH.current=[]}
   /* Called from dO when calibrating — collect delta for each onset */
   function calCollect(delta){if(calSt!=='active')return;
     calH.current.push(delta);
